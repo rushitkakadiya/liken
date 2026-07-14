@@ -136,10 +136,12 @@ function formatPrice(price: unknown, currency?: string) {
   return numeric.toFixed(2);
 }
 
-function shoppingSearchUrl(title: string, seller: string, countryCode: string) {
-  const q = encodeURIComponent([title, seller].filter(Boolean).join(" "));
+function productOffersUrl(title: string, countryCode: string) {
+  // Google Shopping (ibp=oshop) opens the product offers view so shoppers can
+  // compare different sellers for that same item.
+  const q = encodeURIComponent(title);
   const gl = countryCode.toLowerCase();
-  return `https://www.google.com/search?tbm=shop&q=${q}&gl=${gl}`;
+  return `https://www.google.com/search?ibp=oshop&q=${q}&gl=${gl}&hl=en`;
 }
 
 function uniqueGarments(garments: OutfitGarmentInput[]) {
@@ -231,7 +233,8 @@ function collectProductsFromLiveSerp(
   },
   limit: number,
 ): RecommendedProduct[] {
-  const products: RecommendedProduct[] = [];
+  type Candidate = RecommendedProduct & { moreSellers: boolean };
+  const products: Candidate[] = [];
   const seen = new Set<string>();
 
   const push = (raw: {
@@ -239,12 +242,10 @@ function collectProductsFromLiveSerp(
     image?: string;
     price?: unknown;
     store?: string;
-    url?: string;
+    moreSellers?: boolean;
     rating?: number | null;
     reviewsCount?: number | null;
   }) => {
-    if (products.length >= limit) return;
-
     const title = raw.title.trim();
     if (!title) return;
     if (/^buy\b|online australia|shop (all|men|women)|collection/i.test(title)) return;
@@ -256,9 +257,6 @@ function collectProductsFromLiveSerp(
     if (!priced) return;
 
     const store = (raw.store || "Store").trim() || "Store";
-    const url =
-      (raw.url && raw.url.startsWith("http") ? raw.url : "") ||
-      shoppingSearchUrl(title, store, input.countryCode);
     const key = `${title}|${store}`.toLowerCase();
     if (seen.has(key)) return;
     seen.add(key);
@@ -271,17 +269,18 @@ function collectProductsFromLiveSerp(
       price: priced.display,
       currency: priced.currency,
       store,
-      url,
+      // Exact product on Google Shopping — compare sellers for this item.
+      url: productOffersUrl(title, input.countryCode),
       rating: raw.rating ?? null,
       reviewsCount: raw.reviewsCount ?? null,
       country: input.countryName,
       matchedColorName: input.garment.colorName,
       matchedHex: input.garment.hex,
       query: input.query,
+      moreSellers: Boolean(raw.moreSellers),
     });
   };
 
-  // Only Google "Popular products" cards — real image + price.
   for (const item of items) {
     if (!item || typeof item !== "object") continue;
     const block = item as LiveSerpItem;
@@ -300,6 +299,7 @@ function collectProductsFromLiveSerp(
         image: typeof el.image_url === "string" ? el.image_url : undefined,
         price: el.price,
         store: typeof el.seller === "string" ? el.seller : undefined,
+        moreSellers: el.more_sellers === true,
         rating:
           ratingObj && typeof ratingObj.value === "number" ? ratingObj.value : null,
         reviewsCount:
@@ -310,7 +310,12 @@ function collectProductsFromLiveSerp(
     }
   }
 
-  return products;
+  products.sort((a, b) => {
+    if (a.moreSellers !== b.moreSellers) return a.moreSellers ? -1 : 1;
+    return (b.rating ?? 0) - (a.rating ?? 0);
+  });
+
+  return products.slice(0, limit).map(({ moreSellers: _moreSellers, ...product }) => product);
 }
 
 async function runSerpLiveSearch(input: {
@@ -320,11 +325,13 @@ async function runSerpLiveSearch(input: {
   keyword: string;
 }) {
   const locationCode = LOCATION_CODES[input.countryCode.toUpperCase()];
+  // udm=28 = Google Shopping results (same product cards shoppers see in Shopping).
   const payloadBody = [
     {
       language_name: "English",
       keyword: input.keyword,
-      depth: 40,
+      depth: 60,
+      search_param: "&udm=28",
       ...(locationCode
         ? { location_code: locationCode }
         : { location_name: input.countryName }),
@@ -362,43 +369,24 @@ async function searchLiveProducts(input: {
   garment: OutfitGarmentInput;
   keyword: string;
 }): Promise<RecommendedProduct[]> {
-  const queries = [
-    `${input.keyword} buy`,
-    `${input.garment.colorName} ${input.garment.type}`.replace(/\s+/g, " ").trim(),
-  ];
+  const items = await runSerpLiveSearch({
+    authHeader: input.authHeader,
+    countryName: input.countryName,
+    countryCode: input.countryCode,
+    keyword: input.keyword,
+  });
 
-  const collected: RecommendedProduct[][] = [];
-
-  for (const query of queries) {
-    try {
-      const items = await runSerpLiveSearch({
-        authHeader: input.authHeader,
-        countryName: input.countryName,
-        countryCode: input.countryCode,
-        keyword: query,
-      });
-      collected.push(
-        collectProductsFromLiveSerp(
-          items,
-          {
-            category: input.category,
-            garment: input.garment,
-            query: input.keyword,
-            countryName: input.countryName,
-            countryCode: input.countryCode,
-          },
-          PRODUCTS_PER_VARIANT,
-        ),
-      );
-    } catch (error) {
-      console.error("[product-recommendations] query failed", query, error);
-    }
-
-    const soFar = mergeProductsRoundRobin(collected, PRODUCTS_PER_VARIANT);
-    if (soFar.length >= PRODUCTS_PER_VARIANT) return soFar;
-  }
-
-  return mergeProductsRoundRobin(collected, PRODUCTS_PER_VARIANT);
+  return collectProductsFromLiveSerp(
+    items,
+    {
+      category: input.category,
+      garment: input.garment,
+      query: input.keyword,
+      countryName: input.countryName,
+      countryCode: input.countryCode,
+    },
+    PRODUCTS_PER_VARIANT,
+  );
 }
 
 export async function fetchProductRecommendations(input: {

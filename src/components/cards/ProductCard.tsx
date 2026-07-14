@@ -10,37 +10,26 @@ export function ProductCard({
 }) {
   return (
     <div className="glass-card overflow-hidden flex flex-col h-full">
-      <div className="relative aspect-[3/4] overflow-hidden bg-[#181516]">
+      <div className="relative aspect-[3/4] overflow-hidden bg-[#221c1d]">
         {product.image ? (
-          <>
-            <img
-              src={product.image}
-              alt=""
-              aria-hidden
-              className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-35"
-              width={400}
-              height={533}
-              loading="lazy"
-              decoding="async"
-            />
-            <img
-              src={product.image}
-              alt={product.title}
-              className="relative z-10 w-full h-full object-cover object-center"
-              width={400}
-              height={533}
-              loading="lazy"
-              decoding="async"
-            />
-          </>
+          <img
+            src={product.image}
+            alt={product.title}
+            className="relative z-10 w-full h-full object-contain p-3"
+            width={400}
+            height={533}
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+          />
         ) : (
           <div className="w-full h-full" style={{ backgroundColor: product.matchedHex }} />
         )}
-        <span className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] uppercase tracking-wider bg-black/60 backdrop-blur text-white border border-white/10">
+        <span className="absolute top-3 left-3 z-20 px-2.5 py-1 rounded-full text-[10px] uppercase tracking-wider bg-black/60 backdrop-blur text-white border border-white/10">
           {product.country}
         </span>
         <span
-          className="absolute top-3 right-3 h-5 w-5 rounded-full ring-1 ring-white/20"
+          className="absolute top-3 right-3 z-20 h-5 w-5 rounded-full ring-1 ring-white/20"
           style={{ backgroundColor: product.matchedHex }}
           title={product.matchedColorName}
         />
