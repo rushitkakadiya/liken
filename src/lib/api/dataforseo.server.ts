@@ -97,51 +97,151 @@ export function buildSearchKeyword(gender: string, garment: OutfitGarmentInput) 
   return `${gender} ${garment.colorName} ${garment.type}`.replace(/\s+/g, " ").trim();
 }
 
-function formatPrice(price: unknown, currency?: string) {
-  if (price == null || price === "") return "";
-  if (typeof price === "object" && price !== null) {
-    const record = price as Record<string, unknown>;
-    if (typeof record.displayed_price === "string" && record.displayed_price.trim()) {
-      return record.displayed_price.trim();
-    }
-    const current = record.current;
-    const curr =
-      (typeof record.currency === "string" && record.currency) || currency || "";
-    if (typeof current === "number") {
-      try {
-        return new Intl.NumberFormat(undefined, {
-          style: curr ? "currency" : "decimal",
-          currency: curr || undefined,
-          maximumFractionDigits: 2,
-        }).format(current);
-      } catch {
-        return curr ? `${curr} ${current}` : String(current);
-      }
-    }
-  }
+const LOCALE_BY_COUNTRY: Record<string, string> = {
+  AU: "en-AU",
+  US: "en-US",
+  GB: "en-GB",
+  UK: "en-GB",
+  CA: "en-CA",
+  IN: "en-IN",
+  NZ: "en-NZ",
+  IE: "en-IE",
+  SG: "en-SG",
+};
 
-  const numeric = typeof price === "number" ? price : Number(price);
-  if (Number.isNaN(numeric)) return String(price);
-  if (currency) {
-    try {
-      return new Intl.NumberFormat(undefined, {
-        style: "currency",
-        currency,
-        maximumFractionDigits: 2,
-      }).format(numeric);
-    } catch {
-      return `${currency} ${numeric.toFixed(2)}`;
-    }
+function formatMoney(amount: number, currency: string, countryCode = "US") {
+  const locale = LOCALE_BY_COUNTRY[countryCode.toUpperCase()] || "en-US";
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${currency} ${amount.toFixed(2)}`;
   }
-  return numeric.toFixed(2);
 }
 
-function productOffersUrl(title: string, countryCode: string) {
-  // Google Shopping (ibp=oshop) opens the product offers view so shoppers can
-  // compare different sellers for that same item.
-  const q = encodeURIComponent(title);
-  const gl = countryCode.toLowerCase();
-  return `https://www.google.com/search?ibp=oshop&q=${q}&gl=${gl}&hl=en`;
+/** Always show ONE current price — never "$39.90 $50" sale/list doubles. */
+function extractUsablePrice(
+  price: unknown,
+  countryCode = "US",
+): { display: string; currency: string } | null {
+  if (price == null || price === "") return null;
+
+  if (typeof price === "object") {
+    const record = price as Record<string, unknown>;
+    // Use numeric `current` only — ignore `displayed_price` / `regular` (causes double prices).
+    const current = record.current;
+    const currency =
+      (typeof record.currency === "string" && record.currency.trim()) || "USD";
+
+    if (typeof current !== "number" || !Number.isFinite(current) || current <= 0) {
+      return null;
+    }
+
+    return {
+      display: formatMoney(current, currency, countryCode),
+      currency,
+    };
+  }
+
+  const numeric = Number(price);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return { display: formatMoney(numeric, "USD", countryCode), currency: "USD" };
+}
+
+const GOOGLE_HOST_BY_COUNTRY: Record<string, string> = {
+  AU: "www.google.com.au",
+  US: "www.google.com",
+  GB: "www.google.co.uk",
+  UK: "www.google.co.uk",
+  CA: "www.google.ca",
+  IN: "www.google.co.in",
+  NZ: "www.google.co.nz",
+  DE: "www.google.de",
+  FR: "www.google.fr",
+  IT: "www.google.it",
+  ES: "www.google.es",
+  NL: "www.google.nl",
+  SE: "www.google.se",
+  NO: "www.google.no",
+  DK: "www.google.dk",
+  IE: "www.google.ie",
+  SG: "www.google.com.sg",
+  AE: "www.google.ae",
+  JP: "www.google.co.jp",
+  KR: "www.google.co.kr",
+  BR: "www.google.com.br",
+  MX: "www.google.com.mx",
+  ZA: "www.google.co.za",
+  PH: "www.google.com.ph",
+  MY: "www.google.com.my",
+  ID: "www.google.co.id",
+  TH: "www.google.co.th",
+  VN: "www.google.com.vn",
+};
+
+function cleanStoreName(store: string) {
+  return store.replace(/\s*&\s*more\s*$/i, "").trim() || "Store";
+}
+
+function cleanProductTitle(title: string) {
+  return title
+    .replace(/\s*-\s*Size\s*[A-Z0-9/]+\s*$/i, "")
+    .replace(/\s*\(\s*Button Down Collar\s*\)/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function productOffersUrl(title: string, store: string, countryCode: string) {
+  const code = countryCode.toUpperCase();
+  const host = GOOGLE_HOST_BY_COUNTRY[code] || "www.google.com";
+  const gl = code === "UK" ? "uk" : code.toLowerCase();
+  // Shopping mode (udm=28) with title + seller — opens product offers / compare page.
+  const q = encodeURIComponent(
+    `${cleanProductTitle(title)} ${cleanStoreName(store)}`.trim(),
+  );
+  return `https://${host}/search?q=${q}&udm=28&gl=${gl}&hl=en`;
+}
+
+function firstHttpUrl(...candidates: unknown[]): string | undefined {
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string") continue;
+    const value = candidate.trim();
+    if (!value) continue;
+    try {
+      const parsed = new URL(value);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") return value;
+    } catch {
+      // ignore invalid
+    }
+  }
+  return undefined;
+}
+
+/** Prefer sharper DataForSEO CDN / original images over tiny Google thumbnails when both exist. */
+function pickProductImage(...candidates: unknown[]): string | undefined {
+  const urls = candidates
+    .flatMap((c) => (Array.isArray(c) ? c : [c]))
+    .map((c) => (typeof c === "string" ? c.trim() : ""))
+    .filter(Boolean)
+    .filter((url) => {
+      try {
+        const parsed = new URL(url);
+        return parsed.protocol === "http:" || parsed.protocol === "https:";
+      } catch {
+        return false;
+      }
+    });
+
+  if (!urls.length) return undefined;
+  const preferred = urls.find(
+    (url) =>
+      url.includes("api.dataforseo.com/cdn") ||
+      (!url.includes("encrypted-tbn") && !url.includes("gstatic.com/shopping")),
+  );
+  return preferred || urls[0];
 }
 
 function uniqueGarments(garments: OutfitGarmentInput[]) {
@@ -193,35 +293,6 @@ function hasUsableProductImage(image?: string) {
   }
 }
 
-function extractUsablePrice(price: unknown): { display: string; currency: string } | null {
-  if (price == null || price === "") return null;
-
-  if (typeof price === "object") {
-    const record = price as Record<string, unknown>;
-    const current = record.current;
-    const currency = typeof record.currency === "string" ? record.currency : "";
-    const displayed =
-      typeof record.displayed_price === "string" ? record.displayed_price.trim() : "";
-
-    if (typeof current !== "number" || !Number.isFinite(current) || current <= 0) {
-      return null;
-    }
-
-    if (/free delivery|delivery over|shipping/i.test(displayed)) {
-      return null;
-    }
-
-    return {
-      display: formatPrice(price, currency) || (currency ? `${currency} ${current}` : String(current)),
-      currency,
-    };
-  }
-
-  const numeric = Number(price);
-  if (!Number.isFinite(numeric) || numeric <= 0) return null;
-  return { display: formatPrice(numeric), currency: "" };
-}
-
 function collectProductsFromLiveSerp(
   items: unknown[],
   input: {
@@ -242,25 +313,27 @@ function collectProductsFromLiveSerp(
     image?: string;
     price?: unknown;
     store?: string;
+    url?: string;
     moreSellers?: boolean;
     rating?: number | null;
     reviewsCount?: number | null;
   }) => {
-    const title = raw.title.trim();
+    const title = cleanProductTitle(raw.title);
     if (!title) return;
     if (/^buy\b|online australia|shop (all|men|women)|collection/i.test(title)) return;
 
     const image = (raw.image || "").trim();
     if (!hasUsableProductImage(image)) return;
 
-    const priced = extractUsablePrice(raw.price);
+    const priced = extractUsablePrice(raw.price, input.countryCode);
     if (!priced) return;
 
-    const store = (raw.store || "Store").trim() || "Store";
+    const store = cleanStoreName(raw.store || "Store");
     const key = `${title}|${store}`.toLowerCase();
     if (seen.has(key)) return;
     seen.add(key);
 
+    const directUrl = firstHttpUrl(raw.url);
     products.push({
       id: `${input.category}-${crypto.randomUUID()}`,
       category: input.category,
@@ -269,22 +342,24 @@ function collectProductsFromLiveSerp(
       price: priced.display,
       currency: priced.currency,
       store,
-      // Exact product on Google Shopping — compare sellers for this item.
-      url: productOffersUrl(title, input.countryCode),
+      url: directUrl || productOffersUrl(title, store, input.countryCode),
       rating: raw.rating ?? null,
       reviewsCount: raw.reviewsCount ?? null,
       country: input.countryName,
       matchedColorName: input.garment.colorName,
       matchedHex: input.garment.hex,
       query: input.query,
-      moreSellers: Boolean(raw.moreSellers),
+      moreSellers: Boolean(raw.moreSellers) || Boolean(directUrl),
     });
   };
 
   for (const item of items) {
     if (!item || typeof item !== "object") continue;
     const block = item as LiveSerpItem;
-    if (block.type !== "popular_products" || !Array.isArray(block.items)) continue;
+    if (!Array.isArray(block.items)) continue;
+
+    // popular_products: rich images; shopping: often has merchant URLs
+    if (block.type !== "popular_products" && block.type !== "shopping") continue;
 
     for (const child of block.items) {
       if (!child || typeof child !== "object") continue;
@@ -296,9 +371,19 @@ function collectProductsFromLiveSerp(
           : null;
       push({
         title: el.title,
-        image: typeof el.image_url === "string" ? el.image_url : undefined,
+        image: pickProductImage(
+          el.image_url,
+          el.image,
+          Array.isArray(el.images) ? el.images : undefined,
+        ),
         price: el.price,
-        store: typeof el.seller === "string" ? el.seller : undefined,
+        store:
+          typeof el.seller === "string"
+            ? el.seller
+            : typeof el.source === "string"
+              ? el.source
+              : undefined,
+        url: firstHttpUrl(el.marketplace_url, el.url),
         moreSellers: el.more_sellers === true,
         rating:
           ratingObj && typeof ratingObj.value === "number" ? ratingObj.value : null,
