@@ -11,7 +11,7 @@ type ProductCategory = "top" | "bottom";
 
 const PRODUCTS_PER_CATEGORY = 9;
 const MAX_COLOR_VARIANTS = 3;
-const PRODUCTS_PER_VARIANT = 4;
+const PRODUCTS_PER_VARIANT = 6;
 
 /** Common ISO → DataForSEO Google location_code values. */
 const LOCATION_CODES: Record<string, number> = {
@@ -161,7 +161,6 @@ function mergeProductsRoundRobin(lists: RecommendedProduct[][], max: number) {
   let index = 0;
   let progressed = true;
 
-  // Round-robin across color variants so one blue search cannot fill all 6 slots.
   while (merged.length < max && progressed) {
     progressed = false;
     for (const list of lists) {
@@ -182,6 +181,45 @@ function mergeProductsRoundRobin(lists: RecommendedProduct[][], max: number) {
 
 type LiveSerpItem = Record<string, unknown>;
 
+function hasUsableProductImage(image?: string) {
+  if (!image) return false;
+  try {
+    const url = new URL(image);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function extractUsablePrice(price: unknown): { display: string; currency: string } | null {
+  if (price == null || price === "") return null;
+
+  if (typeof price === "object") {
+    const record = price as Record<string, unknown>;
+    const current = record.current;
+    const currency = typeof record.currency === "string" ? record.currency : "";
+    const displayed =
+      typeof record.displayed_price === "string" ? record.displayed_price.trim() : "";
+
+    if (typeof current !== "number" || !Number.isFinite(current) || current <= 0) {
+      return null;
+    }
+
+    if (/free delivery|delivery over|shipping/i.test(displayed)) {
+      return null;
+    }
+
+    return {
+      display: formatPrice(price, currency) || (currency ? `${currency} ${current}` : String(current)),
+      currency,
+    };
+  }
+
+  const numeric = Number(price);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return { display: formatPrice(numeric), currency: "" };
+}
+
 function collectProductsFromLiveSerp(
   items: unknown[],
   input: {
@@ -200,17 +238,24 @@ function collectProductsFromLiveSerp(
     title: string;
     image?: string;
     price?: unknown;
-    currency?: string;
     store?: string;
     url?: string;
     rating?: number | null;
     reviewsCount?: number | null;
   }) => {
     if (products.length >= limit) return;
+
     const title = raw.title.trim();
     if (!title) return;
-    const store = (raw.store || "Store").trim() || "Store";
+    if (/^buy\b|online australia|shop (all|men|women)|collection/i.test(title)) return;
+
     const image = (raw.image || "").trim();
+    if (!hasUsableProductImage(image)) return;
+
+    const priced = extractUsablePrice(raw.price);
+    if (!priced) return;
+
+    const store = (raw.store || "Store").trim() || "Store";
     const url =
       (raw.url && raw.url.startsWith("http") ? raw.url : "") ||
       shoppingSearchUrl(title, store, input.countryCode);
@@ -218,21 +263,13 @@ function collectProductsFromLiveSerp(
     if (seen.has(key)) return;
     seen.add(key);
 
-    const currency =
-      raw.currency ||
-      (typeof raw.price === "object" &&
-      raw.price &&
-      typeof (raw.price as { currency?: string }).currency === "string"
-        ? (raw.price as { currency: string }).currency
-        : "");
-
     products.push({
       id: `${input.category}-${crypto.randomUUID()}`,
       category: input.category,
       title,
       image,
-      price: formatPrice(raw.price, currency),
-      currency,
+      price: priced.display,
+      currency: priced.currency,
       store,
       url,
       rating: raw.rating ?? null,
@@ -244,7 +281,7 @@ function collectProductsFromLiveSerp(
     });
   };
 
-  // 1) Prefer Google "Popular products" cards — include images + price.
+  // Only Google "Popular products" cards — real image + price.
   for (const item of items) {
     if (!item || typeof item !== "object") continue;
     const block = item as LiveSerpItem;
@@ -273,53 +310,21 @@ function collectProductsFromLiveSerp(
     }
   }
 
-  // 2) Fallback: organic results with direct shop links.
-  if (products.length < Math.min(3, limit)) {
-    for (const item of items) {
-      if (!item || typeof item !== "object") continue;
-      const el = item as LiveSerpItem;
-      if (el.type !== "organic" || typeof el.title !== "string") continue;
-      if (typeof el.url !== "string" || !el.url.startsWith("http")) continue;
-
-      const images = Array.isArray(el.images) ? el.images : [];
-      const image =
-        typeof images[0] === "string"
-          ? images[0]
-          : images[0] && typeof images[0] === "object" &&
-              typeof (images[0] as { image?: string }).image === "string"
-            ? (images[0] as { image: string }).image
-            : "";
-
-      push({
-        title: el.title,
-        image,
-        price: el.price,
-        store:
-          (typeof el.website_name === "string" && el.website_name) ||
-          (typeof el.domain === "string" && el.domain) ||
-          undefined,
-        url: el.url,
-      });
-    }
-  }
-
   return products;
 }
 
-async function searchLiveProducts(input: {
+async function runSerpLiveSearch(input: {
   authHeader: string;
   countryName: string;
   countryCode: string;
-  category: ProductCategory;
-  garment: OutfitGarmentInput;
   keyword: string;
-}): Promise<RecommendedProduct[]> {
+}) {
   const locationCode = LOCATION_CODES[input.countryCode.toUpperCase()];
   const payloadBody = [
     {
       language_name: "English",
-      keyword: `${input.keyword} buy`,
-      depth: 20,
+      keyword: input.keyword,
+      depth: 40,
       ...(locationCode
         ? { location_code: locationCode }
         : { location_name: input.countryName }),
@@ -346,20 +351,54 @@ async function searchLiveProducts(input: {
     );
   }
 
-  const items = task?.result?.[0]?.items;
-  if (!Array.isArray(items)) return [];
+  return Array.isArray(task?.result?.[0]?.items) ? (task.result[0].items as unknown[]) : [];
+}
 
-  return collectProductsFromLiveSerp(
-    items,
-    {
-      category: input.category,
-      garment: input.garment,
-      query: input.keyword,
-      countryName: input.countryName,
-      countryCode: input.countryCode,
-    },
-    PRODUCTS_PER_VARIANT,
-  );
+async function searchLiveProducts(input: {
+  authHeader: string;
+  countryName: string;
+  countryCode: string;
+  category: ProductCategory;
+  garment: OutfitGarmentInput;
+  keyword: string;
+}): Promise<RecommendedProduct[]> {
+  const queries = [
+    `${input.keyword} buy`,
+    `${input.garment.colorName} ${input.garment.type}`.replace(/\s+/g, " ").trim(),
+  ];
+
+  const collected: RecommendedProduct[][] = [];
+
+  for (const query of queries) {
+    try {
+      const items = await runSerpLiveSearch({
+        authHeader: input.authHeader,
+        countryName: input.countryName,
+        countryCode: input.countryCode,
+        keyword: query,
+      });
+      collected.push(
+        collectProductsFromLiveSerp(
+          items,
+          {
+            category: input.category,
+            garment: input.garment,
+            query: input.keyword,
+            countryName: input.countryName,
+            countryCode: input.countryCode,
+          },
+          PRODUCTS_PER_VARIANT,
+        ),
+      );
+    } catch (error) {
+      console.error("[product-recommendations] query failed", query, error);
+    }
+
+    const soFar = mergeProductsRoundRobin(collected, PRODUCTS_PER_VARIANT);
+    if (soFar.length >= PRODUCTS_PER_VARIANT) return soFar;
+  }
+
+  return mergeProductsRoundRobin(collected, PRODUCTS_PER_VARIANT);
 }
 
 export async function fetchProductRecommendations(input: {
@@ -378,7 +417,6 @@ export async function fetchProductRecommendations(input: {
 
   const authHeader = basicAuthHeader(credentials.login, credentials.password);
 
-  // Search multiple outfit colors (not just the first) so results aren't all one blue.
   const tops = uniqueGarments(input.looks.map((look) => look.top)).slice(0, MAX_COLOR_VARIANTS);
   const bottoms = uniqueGarments(input.looks.map((look) => look.bottom)).slice(0, MAX_COLOR_VARIANTS);
 
@@ -425,16 +463,21 @@ export async function fetchProductRecommendations(input: {
       return;
     }
 
+    // Keep only complete product cards before merging.
+    const usable = result.value.filter(
+      (product) => hasUsableProductImage(product.image) && Boolean(product.price?.trim()),
+    );
+
     console.info(
       "[product-recommendations] products",
       meta.category,
-      result.value.length,
+      usable.length,
       "from",
       meta.keyword,
     );
 
-    if (meta.category === "top") topLists.push(result.value);
-    else bottomLists.push(result.value);
+    if (meta.category === "top") topLists.push(usable);
+    else bottomLists.push(usable);
   });
 
   const top = mergeProductsRoundRobin(topLists, PRODUCTS_PER_CATEGORY);
