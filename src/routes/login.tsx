@@ -2,7 +2,6 @@ import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { useAuthReady, useUser } from "@/lib/auth";
-import { getMobileSignInInstructions, isLanDevOrigin, isPublicHttpsOrigin } from "@/lib/appOrigin";
 import { pageHead } from "@/lib/seo/pages";
 import { SITE_ICON_PATH } from "@/lib/seo/site";
 import { BrandWord } from "@/components/layout/BrandWord";
@@ -28,9 +27,6 @@ export function AuthScreen({
   const router = useRouter();
   const ready = useAuthReady();
   const user = useUser();
-  const lanDev = isLanDevOrigin();
-  const tunnelDev = isPublicHttpsOrigin();
-  const mobileHelp = getMobileSignInInstructions();
 
   useEffect(() => {
     if (ready && user) {
@@ -68,53 +64,10 @@ export function AuthScreen({
           <BrandWord />
         </Link>
         <div className="rounded-2xl bg-[#181516] border border-white/[0.08] p-8">
-          <h1 className="text-2xl font-semibold mb-1">{title}</h1>
-          <p className="text-sm text-[#8f878a] mb-7">{subtitle}</p>
+          <h1 className="text-2xl font-semibold mb-1 text-center">{title}</h1>
+          <p className="text-sm text-[#8f878a] mb-7 text-center">{subtitle}</p>
 
           <GoogleSignInButton redirectTo={redirectTo} />
-
-          {lanDev && (
-            <div className="mt-5 rounded-xl border border-[#ee296b]/25 bg-[#ee296b]/5 p-3 text-[11px] leading-relaxed text-[#cfc7ca]">
-              <p className="font-medium text-white mb-1">Phone sign-in won&apos;t work on 192.168.x.x</p>
-              <p className="mb-3">
-                Supabase blocks Google redirects to LAN IPs. After Google &quot;Continue&quot;, it sends you to
-                localhost — which fails on your phone. Use one of these instead:
-              </p>
-
-              <div className="mb-3">
-                <p className="font-medium text-white mb-1">{mobileHelp.iphone.title}</p>
-                <ol className="list-decimal list-inside space-y-1">
-                  {mobileHelp.iphone.steps.map((step) => (
-                    <li key={step}>{step}</li>
-                  ))}
-                </ol>
-              </div>
-
-              <div className="mb-3">
-                <p className="font-medium text-white mb-1">{mobileHelp.androidUsb.title}</p>
-                <ol className="list-decimal list-inside space-y-1">
-                  {mobileHelp.androidUsb.steps.map((step) => (
-                    <li key={step}>{step}</li>
-                  ))}
-                </ol>
-              </div>
-
-              <div>
-                <p className="font-medium text-white mb-1">{mobileHelp.tunnel.title}</p>
-                <ol className="list-decimal list-inside space-y-1">
-                  {mobileHelp.tunnel.steps.map((step) => (
-                    <li key={step}>{step}</li>
-                  ))}
-                </ol>
-              </div>
-            </div>
-          )}
-
-          {tunnelDev && (
-            <div className="mt-5 rounded-xl border border-green-500/25 bg-green-500/5 p-3 text-[11px] text-[#cfc7ca]">
-              Tunnel URL detected — Google sign-in should work on this device.
-            </div>
-          )}
 
           <p className="text-[11px] text-[#8f878a] text-center mt-6 leading-relaxed">
             By continuing you agree to our Terms and Privacy Policy.
