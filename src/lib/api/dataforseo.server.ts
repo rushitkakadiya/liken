@@ -5,18 +5,42 @@ import type {
 } from "@/types/productRecommendations";
 import { getDataForSeoCredentialsFromSecrets } from "./secrets.server";
 
-const TASK_POST_URL = "https://api.dataforseo.com/v3/merchant/google/products/task_post";
-const TASK_GET_URL = "https://api.dataforseo.com/v3/merchant/google/products/task_get/advanced";
+const SERP_LIVE_URL = "https://api.dataforseo.com/v3/serp/google/organic/live/advanced";
 
 type ProductCategory = "top" | "bottom";
 
-const PRODUCTS_PER_VARIANT = 3;
-const MAX_PRODUCTS_PER_CATEGORY = 12;
+const PRODUCTS_PER_CATEGORY = 8;
 
-type CategoryTask = {
-  category: ProductCategory;
-  keyword: string;
-  garment: OutfitGarmentInput;
+/** Common ISO → DataForSEO Google location_code values. */
+const LOCATION_CODES: Record<string, number> = {
+  AU: 2036,
+  US: 2840,
+  GB: 2826,
+  UK: 2826,
+  CA: 2124,
+  IN: 2356,
+  NZ: 2554,
+  DE: 2276,
+  FR: 2250,
+  IT: 2380,
+  ES: 2724,
+  NL: 2528,
+  SE: 2752,
+  NO: 2578,
+  DK: 2208,
+  IE: 2372,
+  SG: 2702,
+  AE: 2784,
+  JP: 2392,
+  KR: 2410,
+  BR: 2076,
+  MX: 2484,
+  ZA: 2710,
+  PH: 2608,
+  MY: 2458,
+  ID: 2360,
+  TH: 2764,
+  VN: 2704,
 };
 
 export class DataForSeoError extends Error {
@@ -52,113 +76,48 @@ export function getDataForSeoUserMessage(error: unknown) {
   return "Unable to fetch products right now. Please try again.";
 }
 
-async function getDataForSeoCredentials() {
-  return getDataForSeoCredentialsFromSecrets();
-}
-
 function basicAuthHeader(login: string, password: string) {
   return `Basic ${Buffer.from(`${login}:${password}`).toString("base64")}`;
-}
-
-const PENDING_TASK_STATUS_CODES = new Set([20100, 40601, 40602]);
-
-function isPendingTaskStatus(statusCode?: number) {
-  return statusCode != null && PENDING_TASK_STATUS_CODES.has(statusCode);
-}
-
-function isTaskFailureStatus(statusCode?: number) {
-  if (statusCode == null || statusCode === 20000) return false;
-  if (isPendingTaskStatus(statusCode)) return false;
-  return statusCode >= 40000;
 }
 
 function assertDataForSeoOk(payload: {
   status_code?: number;
   status_message?: string;
 }) {
-  if (payload.status_code == null) return;
-  if (payload.status_code === 20000) return;
-  // Pending/queued task codes are valid while polling task_get.
-  if (isPendingTaskStatus(payload.status_code)) return;
-  throw new DataForSeoError(payload.status_code, payload.status_message || "DataForSEO request failed");
+  if (payload.status_code == null || payload.status_code === 20000) return;
+  throw new DataForSeoError(
+    payload.status_code,
+    payload.status_message || "DataForSEO request failed",
+  );
 }
 
 export function buildSearchKeyword(gender: string, garment: OutfitGarmentInput) {
   return `${gender} ${garment.colorName} ${garment.type}`.replace(/\s+/g, " ").trim();
 }
 
-type UrlCandidates = {
-  directUrl?: string;
-  shoppingUrl?: string;
-  shopAdAck?: string;
-};
-
-function isGoogleShoppingUrl(url: string) {
-  try {
-    const parsed = new URL(url);
-    const host = parsed.hostname.toLowerCase();
-    const path = parsed.pathname.toLowerCase();
-    return (
-      (host.includes("google.") && path.includes("/shopping")) ||
-      host === "shopping.google.com"
-    );
-  } catch {
-    return /google\.[a-z.]+\/shopping/i.test(url) || url.includes("shopping.google.com");
-  }
-}
-
-function isDirectMerchantUrl(url?: string) {
-  if (!url || !url.startsWith("http")) return false;
-  return !isGoogleShoppingUrl(url);
-}
-
-function extractUrlCandidates(raw: Record<string, unknown>): UrlCandidates {
-  return {
-    directUrl: typeof raw.url === "string" ? raw.url : undefined,
-    shoppingUrl: typeof raw.shopping_url === "string" ? raw.shopping_url : undefined,
-    shopAdAck: typeof raw.shop_ad_aclk === "string" ? raw.shop_ad_aclk : undefined,
-  };
-}
-
-function hasResolvableUrl(candidates: UrlCandidates) {
-  return (
-    isDirectMerchantUrl(candidates.directUrl) ||
-    Boolean(candidates.shoppingUrl)
-  );
-}
-
-async function resolveMerchantUrl(candidates: UrlCandidates) {
-  // Prefer free/local URLs only.
-  // Calling sellers/ad_url burns extra credits and often times out on Vercel
-  // after product tasks already succeeded.
-  if (isDirectMerchantUrl(candidates.directUrl)) {
-    return candidates.directUrl!;
-  }
-
-  if (candidates.shoppingUrl) {
-    return candidates.shoppingUrl;
-  }
-
-  return null;
-}
-
-async function finalizeProductUrls(
-  products: Array<RecommendedProduct & { urlCandidates: UrlCandidates }>,
-) {
-  const resolved: RecommendedProduct[] = [];
-
-  for (const product of products) {
-    const url = await resolveMerchantUrl(product.urlCandidates);
-    if (!url) continue;
-    const { urlCandidates: _urlCandidates, ...rest } = product;
-    resolved.push({ ...rest, url });
-  }
-
-  return resolved;
-}
-
 function formatPrice(price: unknown, currency?: string) {
   if (price == null || price === "") return "";
+  if (typeof price === "object" && price !== null) {
+    const record = price as Record<string, unknown>;
+    if (typeof record.displayed_price === "string" && record.displayed_price.trim()) {
+      return record.displayed_price.trim();
+    }
+    const current = record.current;
+    const curr =
+      (typeof record.currency === "string" && record.currency) || currency || "";
+    if (typeof current === "number") {
+      try {
+        return new Intl.NumberFormat(undefined, {
+          style: curr ? "currency" : "decimal",
+          currency: curr || undefined,
+          maximumFractionDigits: 2,
+        }).format(current);
+      } catch {
+        return curr ? `${curr} ${current}` : String(current);
+      }
+    }
+  }
+
   const numeric = typeof price === "number" ? price : Number(price);
   if (Number.isNaN(numeric)) return String(price);
   if (currency) {
@@ -175,256 +134,10 @@ function formatPrice(price: unknown, currency?: string) {
   return numeric.toFixed(2);
 }
 
-function normalizeRawProduct(
-  raw: Record<string, unknown>,
-  input: {
-    category: ProductCategory;
-    garment: OutfitGarmentInput;
-    query: string;
-    country: string;
-  },
-): (RecommendedProduct & { urlCandidates: UrlCandidates }) | null {
-  const title = typeof raw.title === "string" ? raw.title.trim() : "";
-  if (!title) return null;
-
-  const urlCandidates = extractUrlCandidates(raw);
-  if (!hasResolvableUrl(urlCandidates)) return null;
-
-  const images = Array.isArray(raw.product_images) ? raw.product_images : [];
-  const image = typeof images[0] === "string" ? images[0] : "";
-
-  const currency = typeof raw.currency === "string" ? raw.currency : "";
-  const price = formatPrice(raw.price, currency);
-  const store = typeof raw.seller === "string" ? raw.seller : "Store";
-
-  const ratingObj =
-    raw.product_rating && typeof raw.product_rating === "object"
-      ? (raw.product_rating as Record<string, unknown>)
-      : null;
-  const ratingValue = ratingObj?.value;
-  const rating =
-    ratingValue != null && ratingValue !== "" ? Number(ratingValue) : null;
-  const reviewsCount =
-    typeof ratingObj?.votes_count === "number" ? ratingObj.votes_count : null;
-
-  return {
-    id: `${input.category}-${crypto.randomUUID()}`,
-    category: input.category,
-    title,
-    image,
-    price,
-    currency,
-    store,
-    url: "",
-    rating: Number.isFinite(rating) ? rating : null,
-    reviewsCount,
-    country: input.country,
-    matchedColorName: input.garment.colorName,
-    matchedHex: input.garment.hex,
-    query: input.query,
-    urlCandidates,
-  };
-}
-
-function collectProductsFromItems(
-  items: unknown[],
-  input: {
-    category: ProductCategory;
-    garment: OutfitGarmentInput;
-    query: string;
-    country: string;
-  },
-  limit: number,
-) {
-  const products: Array<RecommendedProduct & { urlCandidates: UrlCandidates }> = [];
-  const seen = new Set<string>();
-
-  const visit = (node: unknown) => {
-    if (products.length >= limit || !node || typeof node !== "object") return;
-    const record = node as Record<string, unknown>;
-
-    if (typeof record.title === "string" && hasResolvableUrl(extractUrlCandidates(record))) {
-      const normalized = normalizeRawProduct(record, input);
-      if (!normalized) return;
-
-      const dedupeKey =
-        normalized.urlCandidates.shopAdAck ||
-        normalized.urlCandidates.directUrl ||
-        normalized.urlCandidates.shoppingUrl ||
-        normalized.title;
-
-      if (seen.has(dedupeKey)) return;
-      seen.add(dedupeKey);
-      products.push(normalized);
-    }
-
-    if (Array.isArray(record.items)) {
-      for (const child of record.items) visit(child);
-    }
-  };
-
-  for (const item of items) visit(item);
-  return products;
-}
-
-async function postTasks(
-  authHeader: string,
-  tasks: Array<{
-    location_name: string;
-    language_name: string;
-    keyword: string;
-    priority: number;
-    depth?: number;
-    tag: string;
-  }>,
-) {
-  const response = await fetch(TASK_POST_URL, {
-    method: "POST",
-    headers: {
-      Authorization: authHeader,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(tasks),
-  });
-
-  const payload = await response.json();
-  assertDataForSeoOk(payload);
-
-  const posted = payload?.tasks;
-  if (!Array.isArray(posted) || posted.length === 0) {
-    throw new DataForSeoError(payload?.status_code ?? 0, payload?.status_message || "DataForSEO task_post returned no tasks");
-  }
-
-  for (const task of posted) {
-    if (isTaskFailureStatus(task?.status_code)) {
-      throw new DataForSeoError(task.status_code, task.status_message || "DataForSEO task creation failed");
-    }
-  }
-
-  return posted as Array<{ id?: string; tag?: string; status_code?: number; status_message?: string }>;
-}
-
-async function getTaskResult(authHeader: string, taskId: string) {
-  const response = await fetch(`${TASK_GET_URL}/${taskId}`, {
-    method: "GET",
-    headers: {
-      Authorization: authHeader,
-      "Content-Type": "application/json",
-    },
-  });
-
-  const payload = await response.json();
-  assertDataForSeoOk(payload);
-  return payload;
-}
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Poll many DataForSEO tasks together — required for Vercel time limits. */
-async function waitForTaskResults(
-  authHeader: string,
-  taskIds: string[],
-  options: { maxWaitMs?: number; intervalMs?: number } = {},
-) {
-  const maxWaitMs = options.maxWaitMs ?? 75_000;
-  const intervalMs = options.intervalMs ?? 2_000;
-  const pending = new Set(taskIds);
-  const completed = new Map<string, Record<string, unknown>>();
-  const failures: Error[] = [];
-  const deadline = Date.now() + maxWaitMs;
-
-  while (pending.size > 0 && Date.now() < deadline) {
-    await Promise.all(
-      [...pending].map(async (taskId) => {
-        try {
-          const payload = await getTaskResult(authHeader, taskId);
-          const task = payload?.tasks?.[0] as Record<string, unknown> | undefined;
-          const statusCode = typeof task?.status_code === "number" ? task.status_code : undefined;
-
-          if (statusCode === 20000) {
-            pending.delete(taskId);
-            completed.set(taskId, task ?? {});
-            return;
-          }
-
-          if (isTaskFailureStatus(statusCode)) {
-            pending.delete(taskId);
-            failures.push(
-              new DataForSeoError(
-                statusCode ?? 0,
-                (typeof task?.status_message === "string" && task.status_message) ||
-                  "DataForSEO task failed",
-              ),
-            );
-            return;
-          }
-
-          if (statusCode != null && !isPendingTaskStatus(statusCode)) {
-            // Unexpected non-pending status — keep polling once, else abandon
-            console.warn("[product-recommendations] unexpected task status", taskId, statusCode);
-          }
-        } catch (error) {
-          console.error("[product-recommendations] poll failed", taskId, error);
-        }
-      }),
-    );
-
-    if (pending.size > 0) await sleep(intervalMs);
-  }
-
-  if (completed.size === 0) {
-    if (failures[0]) throw failures[0];
-    throw new Error("DataForSEO task timed out");
-  }
-
-  return completed;
-}
-
-async function productsFromCompletedTask(
-  countryName: string,
-  meta: CategoryTask,
-  completedTask: Record<string, unknown>,
-  limit = PRODUCTS_PER_VARIANT,
-): Promise<RecommendedProduct[]> {
-  const result = Array.isArray(completedTask.result) ? completedTask.result : [];
-  const resultItems = (result[0] as { items?: unknown[] } | undefined)?.items;
-  if (!Array.isArray(resultItems)) return [];
-
-  const rawProducts = collectProductsFromItems(
-    resultItems,
-    {
-      category: meta.category,
-      garment: meta.garment,
-      query: meta.keyword,
-      country: countryName,
-    },
-    limit,
-  );
-
-  return finalizeProductUrls(rawProducts);
-}
-
-function dedupeKey(product: RecommendedProduct) {
-  return product.url || product.title;
-}
-
-function mergeProductLists(lists: RecommendedProduct[][], max: number) {
-  const seen = new Set<string>();
-  const merged: RecommendedProduct[] = [];
-
-  for (const list of lists) {
-    for (const product of list) {
-      const key = dedupeKey(product);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      merged.push(product);
-      if (merged.length >= max) return merged;
-    }
-  }
-
-  return merged;
+function shoppingSearchUrl(title: string, seller: string, countryCode: string) {
+  const q = encodeURIComponent([title, seller].filter(Boolean).join(" "));
+  const gl = countryCode.toLowerCase();
+  return `https://www.google.com/search?tbm=shop&q=${q}&gl=${gl}`;
 }
 
 function uniqueGarments(garments: OutfitGarmentInput[]) {
@@ -436,6 +149,207 @@ function uniqueGarments(garments: OutfitGarmentInput[]) {
   return [...map.values()];
 }
 
+function dedupeKey(product: RecommendedProduct) {
+  return `${product.title}|${product.store}|${product.url}`.toLowerCase();
+}
+
+function mergeProducts(lists: RecommendedProduct[][], max: number) {
+  const seen = new Set<string>();
+  const merged: RecommendedProduct[] = [];
+  for (const list of lists) {
+    for (const product of list) {
+      const key = dedupeKey(product);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(product);
+      if (merged.length >= max) return merged;
+    }
+  }
+  return merged;
+}
+
+type LiveSerpItem = Record<string, unknown>;
+
+function collectProductsFromLiveSerp(
+  items: unknown[],
+  input: {
+    category: ProductCategory;
+    garment: OutfitGarmentInput;
+    query: string;
+    countryName: string;
+    countryCode: string;
+  },
+  limit: number,
+): RecommendedProduct[] {
+  const products: RecommendedProduct[] = [];
+  const seen = new Set<string>();
+
+  const push = (raw: {
+    title: string;
+    image?: string;
+    price?: unknown;
+    currency?: string;
+    store?: string;
+    url?: string;
+    rating?: number | null;
+    reviewsCount?: number | null;
+  }) => {
+    if (products.length >= limit) return;
+    const title = raw.title.trim();
+    if (!title) return;
+    const store = (raw.store || "Store").trim() || "Store";
+    const image = (raw.image || "").trim();
+    const url =
+      (raw.url && raw.url.startsWith("http") ? raw.url : "") ||
+      shoppingSearchUrl(title, store, input.countryCode);
+    const key = `${title}|${store}`.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    const currency =
+      raw.currency ||
+      (typeof raw.price === "object" &&
+      raw.price &&
+      typeof (raw.price as { currency?: string }).currency === "string"
+        ? (raw.price as { currency: string }).currency
+        : "");
+
+    products.push({
+      id: `${input.category}-${crypto.randomUUID()}`,
+      category: input.category,
+      title,
+      image,
+      price: formatPrice(raw.price, currency),
+      currency,
+      store,
+      url,
+      rating: raw.rating ?? null,
+      reviewsCount: raw.reviewsCount ?? null,
+      country: input.countryName,
+      matchedColorName: input.garment.colorName,
+      matchedHex: input.garment.hex,
+      query: input.query,
+    });
+  };
+
+  // 1) Prefer Google "Popular products" cards — include images + price.
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+    const block = item as LiveSerpItem;
+    if (block.type !== "popular_products" || !Array.isArray(block.items)) continue;
+
+    for (const child of block.items) {
+      if (!child || typeof child !== "object") continue;
+      const el = child as LiveSerpItem;
+      if (typeof el.title !== "string") continue;
+      const ratingObj =
+        el.rating && typeof el.rating === "object"
+          ? (el.rating as Record<string, unknown>)
+          : null;
+      push({
+        title: el.title,
+        image: typeof el.image_url === "string" ? el.image_url : undefined,
+        price: el.price,
+        store: typeof el.seller === "string" ? el.seller : undefined,
+        rating:
+          ratingObj && typeof ratingObj.value === "number" ? ratingObj.value : null,
+        reviewsCount:
+          ratingObj && typeof ratingObj.votes_count === "number"
+            ? ratingObj.votes_count
+            : null,
+      });
+    }
+  }
+
+  // 2) Fallback: organic results with direct shop links.
+  if (products.length < Math.min(3, limit)) {
+    for (const item of items) {
+      if (!item || typeof item !== "object") continue;
+      const el = item as LiveSerpItem;
+      if (el.type !== "organic" || typeof el.title !== "string") continue;
+      if (typeof el.url !== "string" || !el.url.startsWith("http")) continue;
+
+      const images = Array.isArray(el.images) ? el.images : [];
+      const image =
+        typeof images[0] === "string"
+          ? images[0]
+          : images[0] && typeof images[0] === "object" &&
+              typeof (images[0] as { image?: string }).image === "string"
+            ? (images[0] as { image: string }).image
+            : "";
+
+      push({
+        title: el.title,
+        image,
+        price: el.price,
+        store:
+          (typeof el.website_name === "string" && el.website_name) ||
+          (typeof el.domain === "string" && el.domain) ||
+          undefined,
+        url: el.url,
+      });
+    }
+  }
+
+  return products;
+}
+
+async function searchLiveProducts(input: {
+  authHeader: string;
+  countryName: string;
+  countryCode: string;
+  category: ProductCategory;
+  garment: OutfitGarmentInput;
+  keyword: string;
+}): Promise<RecommendedProduct[]> {
+  const locationCode = LOCATION_CODES[input.countryCode.toUpperCase()];
+  const payloadBody = [
+    {
+      language_name: "English",
+      keyword: `${input.keyword} buy`,
+      depth: 20,
+      ...(locationCode
+        ? { location_code: locationCode }
+        : { location_name: input.countryName }),
+    },
+  ];
+
+  const response = await fetch(SERP_LIVE_URL, {
+    method: "POST",
+    headers: {
+      Authorization: input.authHeader,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payloadBody),
+  });
+
+  const payload = await response.json();
+  assertDataForSeoOk(payload);
+
+  const task = payload?.tasks?.[0];
+  if (task?.status_code && task.status_code !== 20000) {
+    throw new DataForSeoError(
+      task.status_code,
+      task.status_message || "DataForSEO live search failed",
+    );
+  }
+
+  const items = task?.result?.[0]?.items;
+  if (!Array.isArray(items)) return [];
+
+  return collectProductsFromLiveSerp(
+    items,
+    {
+      category: input.category,
+      garment: input.garment,
+      query: input.keyword,
+      countryName: input.countryName,
+      countryCode: input.countryCode,
+    },
+    PRODUCTS_PER_CATEGORY,
+  );
+}
+
 export async function fetchProductRecommendations(input: {
   countryName: string;
   countryCode: string;
@@ -445,127 +359,76 @@ export async function fetchProductRecommendations(input: {
     bottom: OutfitGarmentInput;
   }>;
 }): Promise<ProductRecommendationsResponse> {
-  const credentials = await getDataForSeoCredentials();
+  const credentials = await getDataForSeoCredentialsFromSecrets();
   if (!credentials) {
     throw new Error("DataForSEO credentials are not configured");
   }
 
   const authHeader = basicAuthHeader(credentials.login, credentials.password);
+  const tops = uniqueGarments(input.looks.map((look) => look.top)).slice(0, 1);
+  const bottoms = uniqueGarments(input.looks.map((look) => look.bottom)).slice(0, 1);
 
-  const tops = uniqueGarments(input.looks.map((look) => look.top));
-  const bottoms = uniqueGarments(input.looks.map((look) => look.bottom));
-
-  // One search per category keeps cost low and finishes within Vercel limits.
-  const categoryTasks: CategoryTask[] = [
-    ...tops.slice(0, 1).map((garment) => ({
+  const tasks = [
+    ...tops.map((garment) => ({
       category: "top" as const,
-      keyword: buildSearchKeyword(input.gender, garment),
       garment,
+      keyword: buildSearchKeyword(input.gender, garment),
     })),
-    ...bottoms.slice(0, 1).map((garment) => ({
+    ...bottoms.map((garment) => ({
       category: "bottom" as const,
-      keyword: buildSearchKeyword(input.gender, garment),
       garment,
+      keyword: buildSearchKeyword(input.gender, garment),
     })),
   ];
 
-  const requestTags = categoryTasks.map((task) => `${task.category}:${task.keyword}`);
-
-  const posted = await postTasks(
-    authHeader,
-    categoryTasks.map((task, index) => ({
-      location_name: input.countryName,
-      language_name: "English",
-      keyword: task.keyword,
-      priority: 2,
-      depth: 10,
-      tag: requestTags[index]!,
-    })),
-  );
-
-  const postedWithMeta = posted.flatMap((item) => {
-    const id = typeof item.id === "string" ? item.id : undefined;
-    const tag =
-      (typeof item.tag === "string" && item.tag) ||
-      (typeof (item as { data?: { tag?: string } }).data?.tag === "string"
-        ? (item as { data: { tag: string } }).data.tag
-        : "");
-    const metaIndex = requestTags.indexOf(tag);
-    const meta = metaIndex >= 0 ? categoryTasks[metaIndex] : undefined;
-    if (!id || !meta) return [];
-    return [{ id, meta }];
-  });
-
-  // Fallback to order matching if tags did not round-trip.
-  const linked =
-    postedWithMeta.length > 0
-      ? postedWithMeta
-      : posted
-          .map((item, index) => ({
-            id: item.id,
-            meta: categoryTasks[index],
-          }))
-          .filter((item): item is { id: string; meta: CategoryTask } => Boolean(item.id && item.meta));
-
-  if (linked.length === 0) {
-    throw new Error("DataForSEO did not return a task id");
-  }
-
   console.info(
-    "[product-recommendations] posted tasks",
-    linked.map((item) => ({ id: item.id, category: item.meta.category, keyword: item.meta.keyword })),
+    "[product-recommendations] live serp search",
+    tasks.map((task) => ({ category: task.category, keyword: task.keyword })),
   );
 
-  const completedById = await waitForTaskResults(
-    authHeader,
-    linked.map((item) => item.id),
-    { maxWaitMs: 90_000, intervalMs: 2_500 },
-  );
-
-  console.info(
-    "[product-recommendations] completed",
-    completedById.size,
-    "of",
-    linked.length,
+  const settled = await Promise.allSettled(
+    tasks.map((task) =>
+      searchLiveProducts({
+        authHeader,
+        countryName: input.countryName,
+        countryCode: input.countryCode,
+        category: task.category,
+        garment: task.garment,
+        keyword: task.keyword,
+      }),
+    ),
   );
 
   const topLists: RecommendedProduct[][] = [];
   const bottomLists: RecommendedProduct[][] = [];
+  const failures: unknown[] = [];
 
-  for (const { id, meta } of linked) {
-    const completed = completedById.get(id);
-    if (!completed) continue;
-
-    const products = await productsFromCompletedTask(
-      input.countryName,
-      meta,
-      completed,
-    );
+  settled.forEach((result, index) => {
+    const meta = tasks[index]!;
+    if (result.status === "rejected") {
+      failures.push(result.reason);
+      console.error("[product-recommendations] live search failed", meta.keyword, result.reason);
+      return;
+    }
 
     console.info(
       "[product-recommendations] products",
       meta.category,
-      products.length,
+      result.value.length,
       "from",
       meta.keyword,
     );
 
-    if (meta.category === "top") topLists.push(products);
-    else bottomLists.push(products);
-  }
+    if (meta.category === "top") topLists.push(result.value);
+    else bottomLists.push(result.value);
+  });
 
-  const top = mergeProductLists(topLists, MAX_PRODUCTS_PER_CATEGORY);
-  const bottom = mergeProductLists(bottomLists, MAX_PRODUCTS_PER_CATEGORY);
+  const top = mergeProducts(topLists, PRODUCTS_PER_CATEGORY);
+  const bottom = mergeProducts(bottomLists, PRODUCTS_PER_CATEGORY);
 
   if (top.length === 0 && bottom.length === 0) {
-    if (completedById.size === 0) {
-      throw new Error("DataForSEO task timed out");
-    }
-    // Tasks finished but no usable product URLs — avoid throwing "timed out".
-    return {
-      ok: true,
-      products: { top: [], bottom: [] },
-    };
+    if (failures[0]) throw failures[0];
+    return { ok: true, products: { top: [], bottom: [] } };
   }
 
   return {
