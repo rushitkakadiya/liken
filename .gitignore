@@ -24,6 +24,9 @@ supabase/.local-secrets-setup.sql
 .wrangler/
 .dev.vars
 
+# Vercel
+.vercel/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
