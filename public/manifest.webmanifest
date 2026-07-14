@@ -1,0 +1,19 @@
+{
+  "name": "liken",
+  "short_name": "liken",
+  "description": "Your AI stylist for colors that actually suit you.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0e090a",
+  "theme_color": "#0e090a",
+  "lang": "en",
+  "icons": [
+    {
+      "src": "/fevicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
