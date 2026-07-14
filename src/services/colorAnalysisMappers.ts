@@ -53,6 +53,63 @@ export function fileToBase64(file: File): Promise<string> {
   });
 }
 
+/**
+ * Downscale/compress uploads before sending to Gemini.
+ * Full phone photos often fail on Vercel (payload too large / timeout).
+ */
+export async function fileToAnalysisImage(
+  file: File,
+  options: { maxEdge?: number; quality?: number } = {},
+): Promise<{ base64: string; mimeType: string }> {
+  const maxEdge = options.maxEdge ?? 1280;
+  const quality = options.quality ?? 0.82;
+
+  if (typeof createImageBitmap !== "function" || typeof document === "undefined") {
+    return {
+      base64: await fileToBase64(file),
+      mimeType: file.type || "image/jpeg",
+    };
+  }
+
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      bitmap.close();
+      return {
+        base64: await fileToBase64(file),
+        mimeType: file.type || "image/jpeg",
+      };
+    }
+
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+
+    const dataUrl = canvas.toDataURL("image/jpeg", quality);
+    const base64 = dataUrl.split(",")[1];
+    if (!base64) {
+      return {
+        base64: await fileToBase64(file),
+        mimeType: file.type || "image/jpeg",
+      };
+    }
+
+    return { base64, mimeType: "image/jpeg" };
+  } catch {
+    return {
+      base64: await fileToBase64(file),
+      mimeType: file.type || "image/jpeg",
+    };
+  }
+}
+
 export function dataUrlToFile(dataUrl: string, filename = "photo.jpg"): File {
   const [header, base64] = dataUrl.split(",");
   const mime = header.match(/:(.*?);/)?.[1] ?? "image/jpeg";

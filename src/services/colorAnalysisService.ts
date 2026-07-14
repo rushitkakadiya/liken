@@ -7,7 +7,7 @@ import {
   COLOR_ANALYSIS_ERROR_MESSAGES,
 } from "@/types/colorAnalysis";
 import { mapProfileToUser } from "@/services/profileService";
-import { fileToBase64 } from "./colorAnalysisMappers";
+import { fileToAnalysisImage } from "./colorAnalysisMappers";
 
 export type { AnalyzeStyleInput, ColorAnalysisResult, ColorAnalysisErrorCode } from "@/types/colorAnalysis";
 export { ColorAnalysisError, COLOR_ANALYSIS_ERROR_MESSAGES } from "@/types/colorAnalysis";
@@ -35,24 +35,46 @@ export async function analyzeStyleFromImage(input: AnalyzeStyleInput): Promise<C
   }
 
   let imageBase64: string;
+  let mimeType: string;
   try {
-    imageBase64 = await fileToBase64(input.imageFile);
+    const prepared = await fileToAnalysisImage(input.imageFile);
+    imageBase64 = prepared.base64;
+    mimeType = prepared.mimeType;
   } catch {
     throw new ColorAnalysisError("NO_IMAGE", COLOR_ANALYSIS_ERROR_MESSAGES.NO_IMAGE);
   }
 
-  const response = await analyzeColorWithAI({
-    data: {
-      accessToken,
-      imageBase64,
-      mimeType: input.imageFile.type || "image/jpeg",
-      gender: input.gender,
-      occasion: input.occasion,
-      stylePreference: input.stylePreference,
-      colorMood: input.colorMood,
-      outfitCount: input.outfitCount,
-    },
-  });
+  // Keep server payloads well under Vercel body limits.
+  if (imageBase64.length > 6_000_000) {
+    throw new ColorAnalysisError(
+      "API_FAILED",
+      "Photo is too large for analysis. Try a smaller or more compressed image.",
+    );
+  }
+
+  let response: Awaited<ReturnType<typeof analyzeColorWithAI>>;
+  try {
+    response = await analyzeColorWithAI({
+      data: {
+        accessToken,
+        imageBase64,
+        mimeType,
+        gender: input.gender,
+        occasion: input.occasion,
+        stylePreference: input.stylePreference,
+        colorMood: input.colorMood,
+        outfitCount: input.outfitCount,
+      },
+    });
+  } catch (error) {
+    console.error("[color-analysis] client request failed:", error);
+    throw new ColorAnalysisError(
+      "API_FAILED",
+      error instanceof Error && error.message
+        ? error.message
+        : COLOR_ANALYSIS_ERROR_MESSAGES.API_FAILED,
+    );
+  }
 
   if (!response.ok) {
     throw new ColorAnalysisError(response.code, response.message);

@@ -46,6 +46,17 @@ export const analyzeColorWithAI = createServerFn({ method: "POST" })
     let result: ColorAnalysisResult;
 
     if (!apiKey) {
+      // In production, never silently mock — callers think analysis succeeded.
+      if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
+        console.error("[color-analysis] GEMINI/api key missing on server");
+        return {
+          ok: false,
+          code: "API_FAILED",
+          message:
+            "Color analysis is not configured. Add gemini_api_key to Supabase app_secrets or GEMINI_API_KEY on Vercel.",
+        };
+      }
+
       result = generateMockColorAnalysis({
         occasion: data.occasion,
         outfitCount,
@@ -71,7 +82,10 @@ export const analyzeColorWithAI = createServerFn({ method: "POST" })
         return {
           ok: false,
           code: "API_FAILED",
-          message: COLOR_ANALYSIS_ERROR_MESSAGES.API_FAILED,
+          message:
+            error instanceof Error && error.message
+              ? error.message
+              : COLOR_ANALYSIS_ERROR_MESSAGES.API_FAILED,
         };
       }
     }

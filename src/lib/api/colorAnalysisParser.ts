@@ -6,7 +6,27 @@ import {
 } from "@/types/colorAnalysis";
 import { mapApiOutfitsToLooks } from "@/services/colorAnalysisMappers";
 
-const hexSchema = z.string().regex(/^#[0-9A-Fa-f]{3,6}$/);
+function normalizeHex(hex: string) {
+  let clean = hex.trim();
+  if (!clean.startsWith("#")) clean = `#${clean}`;
+  if (/^#[0-9A-Fa-f]{3}$/.test(clean)) {
+    const h = clean.slice(1);
+    return `#${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}`.toUpperCase();
+  }
+  if (/^#[0-9A-Fa-f]{6}$/.test(clean)) {
+    return clean.toUpperCase();
+  }
+  // Strip alpha channel if model returns #RRGGBBAA
+  if (/^#[0-9A-Fa-f]{8}$/.test(clean)) {
+    return clean.slice(0, 7).toUpperCase();
+  }
+  return clean.toUpperCase();
+}
+
+const hexSchema = z
+  .string()
+  .transform((value) => normalizeHex(value))
+  .refine((value) => /^#[0-9A-Fa-f]{6}$/.test(value), { message: "Invalid hex color" });
 
 const garmentSchema = z.object({
   type: z.string().min(1),
@@ -21,7 +41,7 @@ const recommendedColorSchema = z
     colorName: z.string().min(1).optional(),
     name: z.string().min(1).optional(),
     hex: hexSchema,
-    reason: z.string().min(1),
+    reason: z.string().min(1).optional().default("Recommended for your complexion."),
   })
   .refine((color) => Boolean(color.colorName || color.name), {
     message: "colorName or name is required",
@@ -38,14 +58,15 @@ const colorAnalysisSchema = z.object({
     .array(
       z.object({
         occasion: z.string().min(1),
-        score: z.number().min(85).max(100),
+        score: z.coerce.number().min(1).max(100).transform((score) => Math.max(85, Math.min(100, Math.round(score)))),
         top: garmentSchema,
         bottom: garmentSchema,
         explanation: z.string().min(1),
       }),
     )
     .min(1)
-    .max(3),
+    .max(5)
+    .transform((outfits) => outfits.slice(0, 3)),
 });
 
 const noFaceSchema = z.object({
@@ -58,20 +79,12 @@ function stripJsonFence(text: string) {
   return fenced ? fenced[1].trim() : trimmed;
 }
 
-function normalizeHex(hex: string) {
-  const clean = hex.trim();
-  if (/^#[0-9A-Fa-f]{3}$/.test(clean)) {
-    const h = clean.slice(1);
-    return `#${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}`.toUpperCase();
-  }
-  return clean.toUpperCase();
-}
-
 export function parseColorAnalysisResponse(rawText: string, fallbackOccasion: string): ColorAnalysisResult {
   let parsed: unknown;
   try {
     parsed = JSON.parse(stripJsonFence(rawText));
   } catch {
+    console.error("[color-analysis] invalid JSON from model:", rawText.slice(0, 400));
     throw new ColorAnalysisError("INVALID_JSON", COLOR_ANALYSIS_ERROR_MESSAGES.INVALID_JSON);
   }
 
@@ -82,6 +95,11 @@ export function parseColorAnalysisResponse(rawText: string, fallbackOccasion: st
 
   const validated = colorAnalysisSchema.safeParse(parsed);
   if (!validated.success) {
+    console.error(
+      "[color-analysis] schema mismatch:",
+      validated.error.message,
+      JSON.stringify(parsed).slice(0, 500),
+    );
     throw new ColorAnalysisError("INVALID_JSON", COLOR_ANALYSIS_ERROR_MESSAGES.INVALID_JSON);
   }
 
@@ -95,14 +113,14 @@ export function parseColorAnalysisResponse(rawText: string, fallbackOccasion: st
     recommendedColors: data.recommendedColors.map((color) => ({
       colorFamily: color.colorFamily ?? "Neutral",
       colorName: color.colorName ?? color.name ?? "Unknown",
-      hex: normalizeHex(color.hex),
+      hex: color.hex,
       reason: color.reason,
     })),
     outfits: mapApiOutfitsToLooks(
       data.outfits.map((outfit) => ({
         ...outfit,
-        top: { ...outfit.top, hex: normalizeHex(outfit.top.hex) },
-        bottom: { ...outfit.bottom, hex: normalizeHex(outfit.bottom.hex) },
+        top: { ...outfit.top, hex: outfit.top.hex },
+        bottom: { ...outfit.bottom, hex: outfit.bottom.hex },
       })),
       fallbackOccasion,
     ),
