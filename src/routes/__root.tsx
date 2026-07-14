@@ -19,6 +19,7 @@ import {
   buildWebSiteJsonLd,
   DEFAULT_DESCRIPTION,
   SITE_NAME,
+  SITE_FULL_NAME,
   SITE_ICON_PATH,
   SITE_FAVICON_PATH,
 } from "@/lib/seo/site";
@@ -64,12 +65,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { name: "theme-color", content: "#0e090a" },
-      { name: "application-name", content: SITE_NAME },
+      { name: "application-name", content: SITE_FULL_NAME },
       { name: "apple-mobile-web-app-title", content: SITE_NAME },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
       { name: "format-detection", content: "telephone=no" },
-      { title: `${SITE_NAME} — Your AI Stylist for Colors That Suit You` },
+      { title: SITE_FULL_NAME },
       { name: "description", content: DEFAULT_DESCRIPTION },
     ],
     links: [

@@ -9,7 +9,9 @@ const SERP_LIVE_URL = "https://api.dataforseo.com/v3/serp/google/organic/live/ad
 
 type ProductCategory = "top" | "bottom";
 
-const PRODUCTS_PER_CATEGORY = 8;
+const PRODUCTS_PER_CATEGORY = 6;
+const MAX_COLOR_VARIANTS = 3;
+const PRODUCTS_PER_VARIANT = 3;
 
 /** Common ISO → DataForSEO Google location_code values. */
 const LOCATION_CODES: Record<string, number> = {
@@ -153,18 +155,28 @@ function dedupeKey(product: RecommendedProduct) {
   return `${product.title}|${product.store}|${product.url}`.toLowerCase();
 }
 
-function mergeProducts(lists: RecommendedProduct[][], max: number) {
+function mergeProductsRoundRobin(lists: RecommendedProduct[][], max: number) {
   const seen = new Set<string>();
   const merged: RecommendedProduct[] = [];
-  for (const list of lists) {
-    for (const product of list) {
+  let index = 0;
+  let progressed = true;
+
+  // Round-robin across color variants so one blue search cannot fill all 6 slots.
+  while (merged.length < max && progressed) {
+    progressed = false;
+    for (const list of lists) {
+      if (merged.length >= max) break;
+      const product = list[index];
+      if (!product) continue;
       const key = dedupeKey(product);
       if (seen.has(key)) continue;
       seen.add(key);
       merged.push(product);
-      if (merged.length >= max) return merged;
+      progressed = true;
     }
+    index += 1;
   }
+
   return merged;
 }
 
@@ -346,7 +358,7 @@ async function searchLiveProducts(input: {
       countryName: input.countryName,
       countryCode: input.countryCode,
     },
-    PRODUCTS_PER_CATEGORY,
+    PRODUCTS_PER_VARIANT,
   );
 }
 
@@ -365,8 +377,10 @@ export async function fetchProductRecommendations(input: {
   }
 
   const authHeader = basicAuthHeader(credentials.login, credentials.password);
-  const tops = uniqueGarments(input.looks.map((look) => look.top)).slice(0, 1);
-  const bottoms = uniqueGarments(input.looks.map((look) => look.bottom)).slice(0, 1);
+
+  // Search multiple outfit colors (not just the first) so results aren't all one blue.
+  const tops = uniqueGarments(input.looks.map((look) => look.top)).slice(0, MAX_COLOR_VARIANTS);
+  const bottoms = uniqueGarments(input.looks.map((look) => look.bottom)).slice(0, MAX_COLOR_VARIANTS);
 
   const tasks = [
     ...tops.map((garment) => ({
@@ -423,8 +437,8 @@ export async function fetchProductRecommendations(input: {
     else bottomLists.push(result.value);
   });
 
-  const top = mergeProducts(topLists, PRODUCTS_PER_CATEGORY);
-  const bottom = mergeProducts(bottomLists, PRODUCTS_PER_CATEGORY);
+  const top = mergeProductsRoundRobin(topLists, PRODUCTS_PER_CATEGORY);
+  const bottom = mergeProductsRoundRobin(bottomLists, PRODUCTS_PER_CATEGORY);
 
   if (top.length === 0 && bottom.length === 0) {
     if (failures[0]) throw failures[0];

@@ -1,4 +1,5 @@
 export const SITE_NAME = "liken";
+export const SITE_FULL_NAME = "liken - AI Styling Studio";
 export const SITE_ICON_PATH = "/fevicon.png";
 export const SITE_FAVICON_PATH = "/fevicon-32.png";
 export const SITE_TAGLINE = "Your AI stylist for colors that actually suit you";
@@ -153,15 +154,15 @@ export function buildPageHead(input: PageSeoInput) {
       { property: "og:description", content: input.description },
       { property: "og:type", content: ogType },
       { property: "og:url", content: canonical },
-      { property: "og:site_name", content: SITE_NAME },
+      { property: "og:site_name", content: SITE_FULL_NAME },
       { property: "og:image", content: OG_IMAGE_URL },
-      { property: "og:image:alt", content: `${SITE_NAME} — AI outfit color styling` },
+      { property: "og:image:alt", content: SITE_FULL_NAME },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: TWITTER_HANDLE },
       { name: "twitter:title", content: input.title },
       { name: "twitter:description", content: input.description },
       { name: "twitter:image", content: OG_IMAGE_URL },
-      { name: "twitter:image:alt", content: `${SITE_NAME} — AI outfit color styling` },
+      { name: "twitter:image:alt", content: SITE_FULL_NAME },
     ],
     links: [{ rel: "canonical", href: canonical }],
   };

@@ -90,7 +90,7 @@ export async function analyzeImageWithGemini(input: {
       contents,
       generationConfig: {
         responseMimeType: "application/json",
-        temperature: 0.4,
+        temperature: 0.25,
         ...(includeThinkingBudget
           ? {
               thinkingConfig: {

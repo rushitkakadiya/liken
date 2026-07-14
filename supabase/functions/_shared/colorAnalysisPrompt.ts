@@ -14,215 +14,76 @@ export function buildColorAnalysisPrompt(input: {
 * Color mood: ${input.colorMood}
 
 Return ONLY valid JSON.
-
 Do NOT return markdown.
-
 Do NOT return explanations outside the JSON.
 
 OBJECTIVE
-
-Act as an experienced professional fashion stylist and color consultant.
-
-Your goal is to recommend clothing colors that genuinely complement the person's appearance while remaining fashionable, realistic, wearable, and commonly available from clothing retailers around the world.
+Act as a professional fashion stylist who picks REAL clothing dye colors from major retailers (Zara, H&M, Uniqlo, Levi's, Nike, etc.).
+Colors must look like dyed fabric in natural light — soft, muted, slightly dusty — never glowing screen/UI colors.
 
 IMAGE ANALYSIS
+Determine: skinTone, undertone, contrastLevel (Low/Medium/High), hairColor, eyeColor.
+If no person/face/skin is visible, return ONLY: {"error":"NO_FACE_DETECTED"}
 
-Analyze the uploaded image and determine:
+NATURAL FABRIC COLOR RULES (CRITICAL)
+HEX values must look like real cloth, not digital paint:
+* Prefer lower-saturation fabric tones (cotton, linen, wool, denim, knit)
+* Favor dusty, washed, heathered, garment-dyed finishes
+* Avoid neon, fluorescent, pure primary RGB, electric/bright UI colors
+* Avoid pure #000000 / #FFFFFF unless a true black/white fabric is needed; prefer soft black or ivory
+* Each HEX should look believable in a product photo of a shirt or trousers
 
-* Skin tone
-* Undertone
-* Overall complexion
-* Contrast level (Low / Medium / High)
-* Hair color (if visible)
-* Eye color (if visible)
+Good fabric HEX examples:
+#2F3E46 (charcoal teal), #8A6D4F (camel), #5C6B4A (olive), #6B3A3A (brick),
+#3E4C5E (slate navy), #C4B7A6 (stone), #7A5C58 (rosewood), #4A5D4E (forest)
 
-If no person or visible face/skin is detected, return ONLY: {"error":"NO_FACE_DETECTED"}
+Bad (forbidden-looking) HEX examples:
+#0000FF #00BFFF #FF00FF #00FF00 #FF0000 #FFFF00 #00FFFF #7C3AED #3B82F6
 
-If lighting is poor, estimate conservatively.
-
-Never invent impossible skin tones.
-
-COLOR SELECTION RULES
-
-Recommendations must depend on:
-
-* Detected skin tone
-* Undertone
-* Gender
-* Occasion
-* Style preference
-* Color mood
-
-Never use a fixed list of recommended colors.
-
-Different users must receive different recommendations.
-
-Changing any input (occasion, style, mood, gender) should produce different outfit suggestions.
-
-Select colors the same way a professional stylist would.
-
-Use principles such as:
-
-* Warm vs Cool harmony
-* Contrast balance
-* Color harmony
-* Seasonal color analysis
-* Wearability
-* Modern fashion styling
-
-Avoid recommending colors simply because they are popular.
-
-FABRIC COLOR RULES
-
-The returned colors must represent realistic clothing colors.
-
-Use colors commonly found in fashion collections.
-
-Avoid:
-
-* Neon colors
-* Fluorescent colors
-* Artificial RGB colors
-* Extremely saturated colors
-* Unrealistic digital colors
-
-Unless Color Mood is "Bold", prefer wearable fabric shades.
-
-HEX VALUES
-
-HEX codes should represent real fabric colors rather than pure digital colors.
-
-For example:
-
-Good:
-
-#24364D
-#D9C8AA
-#59624C
-#6C2436
-#484848
-
-Avoid:
-
-#0000FF
-#FF0000
-#00FF00
-#FFFF00
-#00FFFF
+recommendedColors: return exactly 4 DIFFERENT wearable fabric colors that suit this person.
+Each colorFamily must be unique when possible (e.g. Blue, Green, Neutral, Red — not four blues).
 
 OUTFIT RULES
+Generate exactly 3 outfits for the selected occasion.
+Each outfit = top + bottom only (no shoes/accessories).
+IMPORTANT COLOR DIVERSITY:
+* The 3 outfit tops must use DIFFERENT colorNames/hex values (not the same blue three times)
+* The 3 outfit bottoms should also vary when possible (e.g. charcoal, khaki, navy — not identical)
+* Outfit garment colors should come from the recommendedColors set or closely related fabric shades
+* Include realistic garment types shoppers can buy (Oxford shirt, polo, tee, chinos, jeans, trousers, etc.)
 
-Generate exactly 3 outfit recommendations.
-
-Each outfit must include ONLY:
-
-* Top (shirt, t-shirt, blouse, polo, sweater, etc.)
-* Bottom (pants, jeans, trousers, chinos, skirt, etc.)
-
-Do NOT include shoes, footwear, or accessories.
-
-Each outfit should be appropriate for the selected occasion.
-
-Each outfit should be fashionable, realistic, and wearable.
-
-Each outfit should receive a confidence score between 85 and 100.
+Score each outfit 85–100.
 
 CLOTHING DETAILS
-
-For every clothing item return:
-
-* clothing type
-* color family
-* exact fashion color name
-* HEX code
-
-Example:
-
-Instead of:
-
-Blue Shirt
-
-Return:
-
-Oxford Shirt
-
-Color Family:
-Blue
-
-Fashion Color:
-Midnight Navy
-
-HEX:
-#24364D
-
-This allows more accurate shopping searches later.
+For every top/bottom return:
+* type (specific garment, e.g. "Oxford Shirt", "Slim Chinos")
+* colorFamily
+* colorName (fashion name, e.g. "Midnight Navy", "Stone Beige")
+* hex (natural fabric HEX)
 
 SHOPPING COMPATIBILITY
+colorName + type should form a good shopping query, e.g. "Men Midnight Navy Oxford Shirt".
 
-The returned clothing information should be specific enough to create accurate shopping queries later.
-
-Example:
-
-Men Midnight Navy Oxford Shirt
-
-Women Sage Green Linen Blouse
-
-Women Ivory Wide Leg Trousers
-
-Men Charcoal Slim Fit Chinos
-
-Do NOT return product links.
-
-Do NOT return store names.
-
-Do NOT return images.
-
-Do NOT return shoes or footwear.
-
-Only return styling recommendations for top and bottom garments.
-
-OUTPUT JSON
-
+OUTPUT JSON SHAPE
 {
-"skinTone": "",
-"undertone": "",
-"contrastLevel": "",
-"hairColor": "",
-"eyeColor": "",
-"recommendedColors": [
-{
-"colorFamily": "",
-"colorName": "",
-"hex": "",
-"reason": ""
-}
-],
-"outfits": [
-{
-"occasion": "",
-"score": 0,
-"top": {
-"type": "",
-"colorFamily": "",
-"colorName": "",
-"hex": ""
-},
-"bottom": {
-"type": "",
-"colorFamily": "",
-"colorName": "",
-"hex": ""
-},
-"explanation": ""
-}
-]
+  "skinTone": "",
+  "undertone": "",
+  "contrastLevel": "",
+  "hairColor": "",
+  "eyeColor": "",
+  "recommendedColors": [
+    { "colorFamily": "", "colorName": "", "hex": "", "reason": "" }
+  ],
+  "outfits": [
+    {
+      "occasion": "",
+      "score": 0,
+      "top": { "type": "", "colorFamily": "", "colorName": "", "hex": "" },
+      "bottom": { "type": "", "colorFamily": "", "colorName": "", "hex": "" },
+      "explanation": ""
+    }
+  ]
 }
 
-IMPORTANT
-
-Recommendations should feel like they came from an experienced human fashion stylist, not a generic AI.
-
-Prioritize realistic, purchasable clothing colors that users are likely to find from major clothing retailers worldwide.
-
-Every recommendation should be personalized to the uploaded image and selected preferences.`;
+Prioritize realistic purchasable fabric colors personalized to this photo and preferences.`;
 }
