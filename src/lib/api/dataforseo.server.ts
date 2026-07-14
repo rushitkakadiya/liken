@@ -9,9 +9,9 @@ const SERP_LIVE_URL = "https://api.dataforseo.com/v3/serp/google/organic/live/ad
 
 type ProductCategory = "top" | "bottom";
 
-const PRODUCTS_PER_CATEGORY = 6;
+const PRODUCTS_PER_CATEGORY = 9;
 const MAX_COLOR_VARIANTS = 3;
-const PRODUCTS_PER_VARIANT = 3;
+const PRODUCTS_PER_VARIANT = 4;
 
 /** Common ISO → DataForSEO Google location_code values. */
 const LOCATION_CODES: Record<string, number> = {
