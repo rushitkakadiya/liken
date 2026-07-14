@@ -100,14 +100,20 @@ export async function getAppSecret(key: AppSecretKey): Promise<string> {
     return cached.value;
   }
 
+  const fromEnv = () => process.env[ENV_SECRET_MAP[key]]?.trim() ?? "";
+
   try {
     await bootstrapSecretsFromEnvIfNeeded();
-    const value = await readSecretFromDb(key);
+    const value = (await readSecretFromDb(key)) || fromEnv();
     secretCache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
     return value;
   } catch (error) {
     console.error(`[secrets] Unavailable for ${key}:`, error);
-    return "";
+    const value = fromEnv();
+    if (value) {
+      secretCache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
+    }
+    return value;
   }
 }
 

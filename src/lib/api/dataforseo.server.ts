@@ -309,6 +309,7 @@ async function postTasks(
     language_name: string;
     keyword: string;
     priority: number;
+    depth?: number;
     tag: string;
   }>,
 ) {
@@ -352,65 +353,87 @@ async function getTaskResult(authHeader: string, taskId: string) {
   return payload;
 }
 
-async function waitForTaskResult(authHeader: string, taskId: string) {
-  const maxAttempts = 30;
-  const delayMs = 4000;
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const payload = await getTaskResult(authHeader, taskId);
-    const task = payload?.tasks?.[0];
-    const statusCode = task?.status_code;
-
-    if (statusCode === 20000) {
-      return task;
-    }
-
-    if (isPendingTaskStatus(statusCode)) {
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-      continue;
-    }
-
-    if (isTaskFailureStatus(statusCode)) {
-      throw new DataForSeoError(statusCode, task?.status_message || "DataForSEO task failed");
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
-  }
-
-  throw new Error("DataForSEO task timed out");
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchCategoryProducts(
+/** Poll many DataForSEO tasks together — required for Vercel time limits. */
+async function waitForTaskResults(
   authHeader: string,
-  countryName: string,
-  task: CategoryTask,
-  limit = PRODUCTS_PER_VARIANT,
-): Promise<RecommendedProduct[]> {
-  const posted = await postTasks(authHeader, [
-    {
-      location_name: countryName,
-      language_name: "English",
-      keyword: task.keyword,
-      priority: 2,
-      tag: task.category,
-    },
-  ]);
+  taskIds: string[],
+  options: { maxWaitMs?: number; intervalMs?: number } = {},
+) {
+  const maxWaitMs = options.maxWaitMs ?? 75_000;
+  const intervalMs = options.intervalMs ?? 2_000;
+  const pending = new Set(taskIds);
+  const completed = new Map<string, Record<string, unknown>>();
+  const failures: Error[] = [];
+  const deadline = Date.now() + maxWaitMs;
 
-  const taskId = posted[0]?.id;
-  if (!taskId) {
-    throw new Error(`DataForSEO did not return a task id for ${task.category}`);
+  while (pending.size > 0 && Date.now() < deadline) {
+    await Promise.all(
+      [...pending].map(async (taskId) => {
+        try {
+          const payload = await getTaskResult(authHeader, taskId);
+          const task = payload?.tasks?.[0] as Record<string, unknown> | undefined;
+          const statusCode = typeof task?.status_code === "number" ? task.status_code : undefined;
+
+          if (statusCode === 20000) {
+            pending.delete(taskId);
+            completed.set(taskId, task ?? {});
+            return;
+          }
+
+          if (isTaskFailureStatus(statusCode)) {
+            pending.delete(taskId);
+            failures.push(
+              new DataForSeoError(
+                statusCode ?? 0,
+                (typeof task?.status_message === "string" && task.status_message) ||
+                  "DataForSEO task failed",
+              ),
+            );
+            return;
+          }
+
+          if (statusCode != null && !isPendingTaskStatus(statusCode)) {
+            // Unexpected non-pending status — keep polling once, else abandon
+            console.warn("[product-recommendations] unexpected task status", taskId, statusCode);
+          }
+        } catch (error) {
+          console.error("[product-recommendations] poll failed", taskId, error);
+        }
+      }),
+    );
+
+    if (pending.size > 0) await sleep(intervalMs);
   }
 
-  const completed = await waitForTaskResult(authHeader, taskId);
-  const resultItems = completed?.result?.[0]?.items;
+  if (completed.size === 0) {
+    if (failures[0]) throw failures[0];
+    throw new Error("DataForSEO task timed out");
+  }
+
+  return completed;
+}
+
+async function productsFromCompletedTask(
+  authHeader: string,
+  countryName: string,
+  meta: CategoryTask,
+  completedTask: Record<string, unknown>,
+  limit = PRODUCTS_PER_VARIANT,
+): Promise<RecommendedProduct[]> {
+  const result = Array.isArray(completedTask.result) ? completedTask.result : [];
+  const resultItems = (result[0] as { items?: unknown[] } | undefined)?.items;
   if (!Array.isArray(resultItems)) return [];
 
   const rawProducts = collectProductsFromItems(
     resultItems,
     {
-      category: task.category,
-      garment: task.garment,
-      query: task.keyword,
+      category: meta.category,
+      garment: meta.garment,
+      query: meta.keyword,
       country: countryName,
     },
     limit,
@@ -468,37 +491,71 @@ export async function fetchProductRecommendations(input: {
   const tops = uniqueGarments(input.looks.map((look) => look.top));
   const bottoms = uniqueGarments(input.looks.map((look) => look.bottom));
 
-  const topTasks: CategoryTask[] = tops.map((garment) => ({
-    category: "top",
-    keyword: buildSearchKeyword(input.gender, garment),
-    garment,
-  }));
+  // Cap variants so serverless deploys finish within Vercel maxDuration.
+  const MAX_TASKS_PER_CATEGORY = 2;
+  const categoryTasks: CategoryTask[] = [
+    ...tops.slice(0, MAX_TASKS_PER_CATEGORY).map((garment) => ({
+      category: "top" as const,
+      keyword: buildSearchKeyword(input.gender, garment),
+      garment,
+    })),
+    ...bottoms.slice(0, MAX_TASKS_PER_CATEGORY).map((garment) => ({
+      category: "bottom" as const,
+      keyword: buildSearchKeyword(input.gender, garment),
+      garment,
+    })),
+  ];
 
-  const bottomTasks: CategoryTask[] = bottoms.map((garment) => ({
-    category: "bottom",
-    keyword: buildSearchKeyword(input.gender, garment),
-    garment,
-  }));
-
-  const topSettled = await Promise.allSettled(
-    topTasks.map((task) => fetchCategoryProducts(authHeader, input.countryName, task)),
+  const posted = await postTasks(
+    authHeader,
+    categoryTasks.map((task, index) => ({
+      location_name: input.countryName,
+      language_name: "English",
+      keyword: task.keyword,
+      // 2 = high priority (faster queue; higher cost)
+      priority: 2,
+      depth: 20,
+      tag: `${task.category}:${index}`,
+    })),
   );
-  const bottomSettled = await Promise.allSettled(
-    bottomTasks.map((task) => fetchCategoryProducts(authHeader, input.countryName, task)),
+
+  const postedWithMeta = posted
+    .map((item, index) => ({
+      id: item.id,
+      meta: categoryTasks[index],
+    }))
+    .filter((item): item is { id: string; meta: CategoryTask } => Boolean(item.id && item.meta));
+
+  if (postedWithMeta.length === 0) {
+    throw new Error("DataForSEO did not return a task id");
+  }
+
+  const completedById = await waitForTaskResults(
+    authHeader,
+    postedWithMeta.map((item) => item.id),
+    { maxWaitMs: 75_000, intervalMs: 2_000 },
   );
 
-  const topLists = topSettled
-    .filter((result): result is PromiseFulfilledResult<RecommendedProduct[]> => result.status === "fulfilled")
-    .map((result) => result.value);
-  const bottomLists = bottomSettled
-    .filter((result): result is PromiseFulfilledResult<RecommendedProduct[]> => result.status === "fulfilled")
-    .map((result) => result.value);
+  const topLists: RecommendedProduct[][] = [];
+  const bottomLists: RecommendedProduct[][] = [];
+
+  for (const { id, meta } of postedWithMeta) {
+    const completed = completedById.get(id);
+    if (!completed) continue;
+
+    const products = await productsFromCompletedTask(
+      authHeader,
+      input.countryName,
+      meta,
+      completed,
+    );
+
+    if (meta.category === "top") topLists.push(products);
+    else bottomLists.push(products);
+  }
 
   if (topLists.length === 0 && bottomLists.length === 0) {
-    const failures = [...topSettled, ...bottomSettled].filter(
-      (result): result is PromiseRejectedResult => result.status === "rejected",
-    );
-    if (failures.length > 0) throw failures[0].reason;
+    throw new Error("DataForSEO task timed out");
   }
 
   const top = mergeProductLists(topLists, MAX_PRODUCTS_PER_CATEGORY);

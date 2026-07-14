@@ -97,7 +97,19 @@ export async function fetchProductRecommendations(
     body: JSON.stringify(input),
   });
 
-  const payload = (await response.json()) as ProductRecommendationsResult;
+  let payload: ProductRecommendationsResult;
+  try {
+    payload = (await response.json()) as ProductRecommendationsResult;
+  } catch {
+    return {
+      ok: false,
+      error: "FETCH_FAILED",
+      message:
+        response.status === 504 || response.status === 408
+          ? "Product search is taking longer than expected. Please try again."
+          : "Unable to fetch products right now. Please try again.",
+    };
+  }
 
   if (payload.ok && payload.profile) {
     applyUsageProfile(payload.profile);

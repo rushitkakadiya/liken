@@ -19,7 +19,14 @@ for (const key of Object.keys(process.env)) {
 export default defineConfig({
   // Required for Vercel/non-Lovable deploys: enable Nitro so the server
   // build runs. On Vercel, Nitro auto-selects the vercel preset.
-  nitro: true,
+  nitro: {
+    vercel: {
+      functions: {
+        // Product search polls DataForSEO (can take ~30–90s).
+        maxDuration: 300,
+      },
+    },
+  },
   vite: {
     server: {
       host: true,
