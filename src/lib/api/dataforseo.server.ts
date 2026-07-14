@@ -7,7 +7,6 @@ import { getDataForSeoCredentialsFromSecrets } from "./secrets.server";
 
 const TASK_POST_URL = "https://api.dataforseo.com/v3/merchant/google/products/task_post";
 const TASK_GET_URL = "https://api.dataforseo.com/v3/merchant/google/products/task_get/advanced";
-const SELLERS_AD_URL = "https://api.dataforseo.com/v3/merchant/google/sellers/ad_url";
 
 type ProductCategory = "top" | "bottom";
 
@@ -79,6 +78,8 @@ function assertDataForSeoOk(payload: {
 }) {
   if (payload.status_code == null) return;
   if (payload.status_code === 20000) return;
+  // Pending/queued task codes are valid while polling task_get.
+  if (isPendingTaskStatus(payload.status_code)) return;
   throw new DataForSeoError(payload.status_code, payload.status_message || "DataForSEO request failed");
 }
 
@@ -122,49 +123,16 @@ function extractUrlCandidates(raw: Record<string, unknown>): UrlCandidates {
 function hasResolvableUrl(candidates: UrlCandidates) {
   return (
     isDirectMerchantUrl(candidates.directUrl) ||
-    Boolean(candidates.shopAdAck) ||
     Boolean(candidates.shoppingUrl)
   );
 }
 
-async function resolveSellerAdUrl(authHeader: string, shopAdAck: string) {
-  const response = await fetch(`${SELLERS_AD_URL}/${encodeURIComponent(shopAdAck)}`, {
-    method: "GET",
-    headers: {
-      Authorization: authHeader,
-      "Content-Type": "application/json",
-    },
-  });
-
-  const payload = await response.json();
-  assertDataForSeoOk(payload);
-
-  const adUrl = payload?.tasks?.[0]?.result?.[0]?.ad_url;
-  return typeof adUrl === "string" && adUrl.startsWith("http") ? adUrl : null;
-}
-
-async function resolveMerchantUrl(
-  authHeader: string,
-  cache: Map<string, string>,
-  candidates: UrlCandidates,
-) {
+async function resolveMerchantUrl(candidates: UrlCandidates) {
+  // Prefer free/local URLs only.
+  // Calling sellers/ad_url burns extra credits and often times out on Vercel
+  // after product tasks already succeeded.
   if (isDirectMerchantUrl(candidates.directUrl)) {
     return candidates.directUrl!;
-  }
-
-  if (candidates.shopAdAck) {
-    const cached = cache.get(candidates.shopAdAck);
-    if (cached) return cached;
-
-    try {
-      const resolved = await resolveSellerAdUrl(authHeader, candidates.shopAdAck);
-      if (resolved && isDirectMerchantUrl(resolved)) {
-        cache.set(candidates.shopAdAck, resolved);
-        return resolved;
-      }
-    } catch (error) {
-      console.error("[product-recommendations] ad_url resolve failed:", error);
-    }
   }
 
   if (candidates.shoppingUrl) {
@@ -172,6 +140,21 @@ async function resolveMerchantUrl(
   }
 
   return null;
+}
+
+async function finalizeProductUrls(
+  products: Array<RecommendedProduct & { urlCandidates: UrlCandidates }>,
+) {
+  const resolved: RecommendedProduct[] = [];
+
+  for (const product of products) {
+    const url = await resolveMerchantUrl(product.urlCandidates);
+    if (!url) continue;
+    const { urlCandidates: _urlCandidates, ...rest } = product;
+    resolved.push({ ...rest, url });
+  }
+
+  return resolved;
 }
 
 function formatPrice(price: unknown, currency?: string) {
@@ -282,24 +265,6 @@ function collectProductsFromItems(
 
   for (const item of items) visit(item);
   return products;
-}
-
-async function finalizeProductUrls(
-  authHeader: string,
-  products: Array<RecommendedProduct & { urlCandidates: UrlCandidates }>,
-) {
-  const adUrlCache = new Map<string, string>();
-  const resolved: RecommendedProduct[] = [];
-
-  for (const product of products) {
-    const url = await resolveMerchantUrl(authHeader, adUrlCache, product.urlCandidates);
-    if (!url) continue;
-
-    const { urlCandidates: _urlCandidates, ...rest } = product;
-    resolved.push({ ...rest, url });
-  }
-
-  return resolved;
 }
 
 async function postTasks(
@@ -418,7 +383,6 @@ async function waitForTaskResults(
 }
 
 async function productsFromCompletedTask(
-  authHeader: string,
   countryName: string,
   meta: CategoryTask,
   completedTask: Record<string, unknown>,
@@ -439,7 +403,7 @@ async function productsFromCompletedTask(
     limit,
   );
 
-  return finalizeProductUrls(authHeader, rawProducts);
+  return finalizeProductUrls(rawProducts);
 }
 
 function dedupeKey(product: RecommendedProduct) {
@@ -491,20 +455,21 @@ export async function fetchProductRecommendations(input: {
   const tops = uniqueGarments(input.looks.map((look) => look.top));
   const bottoms = uniqueGarments(input.looks.map((look) => look.bottom));
 
-  // Cap variants so serverless deploys finish within Vercel maxDuration.
-  const MAX_TASKS_PER_CATEGORY = 2;
+  // One search per category keeps cost low and finishes within Vercel limits.
   const categoryTasks: CategoryTask[] = [
-    ...tops.slice(0, MAX_TASKS_PER_CATEGORY).map((garment) => ({
+    ...tops.slice(0, 1).map((garment) => ({
       category: "top" as const,
       keyword: buildSearchKeyword(input.gender, garment),
       garment,
     })),
-    ...bottoms.slice(0, MAX_TASKS_PER_CATEGORY).map((garment) => ({
+    ...bottoms.slice(0, 1).map((garment) => ({
       category: "bottom" as const,
       keyword: buildSearchKeyword(input.gender, garment),
       garment,
     })),
   ];
+
+  const requestTags = categoryTasks.map((task) => `${task.category}:${task.keyword}`);
 
   const posted = await postTasks(
     authHeader,
@@ -512,54 +477,96 @@ export async function fetchProductRecommendations(input: {
       location_name: input.countryName,
       language_name: "English",
       keyword: task.keyword,
-      // 2 = high priority (faster queue; higher cost)
       priority: 2,
-      depth: 20,
-      tag: `${task.category}:${index}`,
+      depth: 10,
+      tag: requestTags[index]!,
     })),
   );
 
-  const postedWithMeta = posted
-    .map((item, index) => ({
-      id: item.id,
-      meta: categoryTasks[index],
-    }))
-    .filter((item): item is { id: string; meta: CategoryTask } => Boolean(item.id && item.meta));
+  const postedWithMeta = posted.flatMap((item) => {
+    const id = typeof item.id === "string" ? item.id : undefined;
+    const tag =
+      (typeof item.tag === "string" && item.tag) ||
+      (typeof (item as { data?: { tag?: string } }).data?.tag === "string"
+        ? (item as { data: { tag: string } }).data.tag
+        : "");
+    const metaIndex = requestTags.indexOf(tag);
+    const meta = metaIndex >= 0 ? categoryTasks[metaIndex] : undefined;
+    if (!id || !meta) return [];
+    return [{ id, meta }];
+  });
 
-  if (postedWithMeta.length === 0) {
+  // Fallback to order matching if tags did not round-trip.
+  const linked =
+    postedWithMeta.length > 0
+      ? postedWithMeta
+      : posted
+          .map((item, index) => ({
+            id: item.id,
+            meta: categoryTasks[index],
+          }))
+          .filter((item): item is { id: string; meta: CategoryTask } => Boolean(item.id && item.meta));
+
+  if (linked.length === 0) {
     throw new Error("DataForSEO did not return a task id");
   }
 
+  console.info(
+    "[product-recommendations] posted tasks",
+    linked.map((item) => ({ id: item.id, category: item.meta.category, keyword: item.meta.keyword })),
+  );
+
   const completedById = await waitForTaskResults(
     authHeader,
-    postedWithMeta.map((item) => item.id),
-    { maxWaitMs: 75_000, intervalMs: 2_000 },
+    linked.map((item) => item.id),
+    { maxWaitMs: 90_000, intervalMs: 2_500 },
+  );
+
+  console.info(
+    "[product-recommendations] completed",
+    completedById.size,
+    "of",
+    linked.length,
   );
 
   const topLists: RecommendedProduct[][] = [];
   const bottomLists: RecommendedProduct[][] = [];
 
-  for (const { id, meta } of postedWithMeta) {
+  for (const { id, meta } of linked) {
     const completed = completedById.get(id);
     if (!completed) continue;
 
     const products = await productsFromCompletedTask(
-      authHeader,
       input.countryName,
       meta,
       completed,
+    );
+
+    console.info(
+      "[product-recommendations] products",
+      meta.category,
+      products.length,
+      "from",
+      meta.keyword,
     );
 
     if (meta.category === "top") topLists.push(products);
     else bottomLists.push(products);
   }
 
-  if (topLists.length === 0 && bottomLists.length === 0) {
-    throw new Error("DataForSEO task timed out");
-  }
-
   const top = mergeProductLists(topLists, MAX_PRODUCTS_PER_CATEGORY);
   const bottom = mergeProductLists(bottomLists, MAX_PRODUCTS_PER_CATEGORY);
+
+  if (top.length === 0 && bottom.length === 0) {
+    if (completedById.size === 0) {
+      throw new Error("DataForSEO task timed out");
+    }
+    // Tasks finished but no usable product URLs — avoid throwing "timed out".
+    return {
+      ok: true,
+      products: { top: [], bottom: [] },
+    };
+  }
 
   return {
     ok: true,
