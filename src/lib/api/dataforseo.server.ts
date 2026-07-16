@@ -5,13 +5,14 @@ import type {
 } from "@/types/productRecommendations";
 import { getDataForSeoCredentialsFromSecrets } from "./secrets.server";
 
-const SERP_LIVE_URL = "https://api.dataforseo.com/v3/serp/google/organic/live/advanced";
+const TASK_POST_URL = "https://api.dataforseo.com/v3/merchant/google/products/task_post";
+const TASK_GET_URL = "https://api.dataforseo.com/v3/merchant/google/products/task_get/advanced";
 
 type ProductCategory = "top" | "bottom";
 
 const PRODUCTS_PER_CATEGORY = 9;
 const MAX_COLOR_VARIANTS = 3;
-const PRODUCTS_PER_VARIANT = 6;
+const PRODUCTS_PER_VARIANT = 8;
 
 /** Common ISO → DataForSEO Google location_code values. */
 const LOCATION_CODES: Record<string, number> = {
@@ -43,6 +44,31 @@ const LOCATION_CODES: Record<string, number> = {
   ID: 2360,
   TH: 2764,
   VN: 2704,
+};
+
+const LOCALE_BY_COUNTRY: Record<string, string> = {
+  AU: "en-AU",
+  US: "en-US",
+  GB: "en-GB",
+  UK: "en-GB",
+  CA: "en-CA",
+  IN: "en-IN",
+  NZ: "en-NZ",
+  IE: "en-IE",
+  SG: "en-SG",
+};
+
+const PENDING_TASK_STATUS_CODES = new Set([20100, 40601, 40602]);
+
+type CategoryTask = {
+  category: ProductCategory;
+  keyword: string;
+  garment: OutfitGarmentInput;
+};
+
+type UrlCandidates = {
+  directUrl?: string;
+  shoppingUrl?: string;
 };
 
 export class DataForSeoError extends Error {
@@ -82,11 +108,22 @@ function basicAuthHeader(login: string, password: string) {
   return `Basic ${Buffer.from(`${login}:${password}`).toString("base64")}`;
 }
 
+function isPendingTaskStatus(statusCode?: number) {
+  return statusCode != null && PENDING_TASK_STATUS_CODES.has(statusCode);
+}
+
+function isTaskFailureStatus(statusCode?: number) {
+  if (statusCode == null || statusCode === 20000) return false;
+  if (isPendingTaskStatus(statusCode)) return false;
+  return statusCode >= 40000;
+}
+
 function assertDataForSeoOk(payload: {
   status_code?: number;
   status_message?: string;
 }) {
   if (payload.status_code == null || payload.status_code === 20000) return;
+  if (isPendingTaskStatus(payload.status_code)) return;
   throw new DataForSeoError(
     payload.status_code,
     payload.status_message || "DataForSEO request failed",
@@ -96,18 +133,6 @@ function assertDataForSeoOk(payload: {
 export function buildSearchKeyword(gender: string, garment: OutfitGarmentInput) {
   return `${gender} ${garment.colorName} ${garment.type}`.replace(/\s+/g, " ").trim();
 }
-
-const LOCALE_BY_COUNTRY: Record<string, string> = {
-  AU: "en-AU",
-  US: "en-US",
-  GB: "en-GB",
-  UK: "en-GB",
-  CA: "en-CA",
-  IN: "en-IN",
-  NZ: "en-NZ",
-  IE: "en-IE",
-  SG: "en-SG",
-};
 
 function formatMoney(amount: number, currency: string, countryCode = "US") {
   const locale = LOCALE_BY_COUNTRY[countryCode.toUpperCase()] || "en-US";
@@ -122,65 +147,32 @@ function formatMoney(amount: number, currency: string, countryCode = "US") {
   }
 }
 
-/** Always show ONE current price — never "$39.90 $50" sale/list doubles. */
 function extractUsablePrice(
-  price: unknown,
-  countryCode = "US",
+  raw: Record<string, unknown>,
+  countryCode: string,
 ): { display: string; currency: string } | null {
-  if (price == null || price === "") return null;
-
-  if (typeof price === "object") {
-    const record = price as Record<string, unknown>;
-    // Use numeric `current` only — ignore `displayed_price` / `regular` (causes double prices).
-    const current = record.current;
+  // Merchant API: price is a number + currency string.
+  if (typeof raw.price === "number" && Number.isFinite(raw.price) && raw.price > 0) {
     const currency =
-      (typeof record.currency === "string" && record.currency.trim()) || "USD";
-
-    if (typeof current !== "number" || !Number.isFinite(current) || current <= 0) {
-      return null;
-    }
-
-    return {
-      display: formatMoney(current, currency, countryCode),
-      currency,
-    };
+      (typeof raw.currency === "string" && raw.currency.trim()) || "USD";
+    return { display: formatMoney(raw.price, currency, countryCode), currency };
   }
 
-  const numeric = Number(price);
-  if (!Number.isFinite(numeric) || numeric <= 0) return null;
-  return { display: formatMoney(numeric, "USD", countryCode), currency: "USD" };
-}
+  // Some payloads nest price as { current, currency }.
+  if (raw.price && typeof raw.price === "object") {
+    const record = raw.price as Record<string, unknown>;
+    const current = record.current;
+    const currency =
+      (typeof record.currency === "string" && record.currency.trim()) ||
+      (typeof raw.currency === "string" && raw.currency.trim()) ||
+      "USD";
+    if (typeof current === "number" && Number.isFinite(current) && current > 0) {
+      return { display: formatMoney(current, currency, countryCode), currency };
+    }
+  }
 
-const GOOGLE_HOST_BY_COUNTRY: Record<string, string> = {
-  AU: "www.google.com.au",
-  US: "www.google.com",
-  GB: "www.google.co.uk",
-  UK: "www.google.co.uk",
-  CA: "www.google.ca",
-  IN: "www.google.co.in",
-  NZ: "www.google.co.nz",
-  DE: "www.google.de",
-  FR: "www.google.fr",
-  IT: "www.google.it",
-  ES: "www.google.es",
-  NL: "www.google.nl",
-  SE: "www.google.se",
-  NO: "www.google.no",
-  DK: "www.google.dk",
-  IE: "www.google.ie",
-  SG: "www.google.com.sg",
-  AE: "www.google.ae",
-  JP: "www.google.co.jp",
-  KR: "www.google.co.kr",
-  BR: "www.google.com.br",
-  MX: "www.google.com.mx",
-  ZA: "www.google.co.za",
-  PH: "www.google.com.ph",
-  MY: "www.google.com.my",
-  ID: "www.google.co.id",
-  TH: "www.google.co.th",
-  VN: "www.google.com.vn",
-};
+  return null;
+}
 
 function cleanStoreName(store: string) {
   return store.replace(/\s*&\s*more\s*$/i, "").trim() || "Store";
@@ -194,17 +186,6 @@ function cleanProductTitle(title: string) {
     .trim();
 }
 
-function productOffersUrl(title: string, store: string, countryCode: string) {
-  const code = countryCode.toUpperCase();
-  const host = GOOGLE_HOST_BY_COUNTRY[code] || "www.google.com";
-  const gl = code === "UK" ? "uk" : code.toLowerCase();
-  // Shopping mode (udm=28) with title + seller — opens product offers / compare page.
-  const q = encodeURIComponent(
-    `${cleanProductTitle(title)} ${cleanStoreName(store)}`.trim(),
-  );
-  return `https://${host}/search?q=${q}&udm=28&gl=${gl}&hl=en`;
-}
-
 function firstHttpUrl(...candidates: unknown[]): string | undefined {
   for (const candidate of candidates) {
     if (typeof candidate !== "string") continue;
@@ -214,15 +195,79 @@ function firstHttpUrl(...candidates: unknown[]): string | undefined {
       const parsed = new URL(value);
       if (parsed.protocol === "http:" || parsed.protocol === "https:") return value;
     } catch {
-      // ignore invalid
+      // ignore
     }
   }
   return undefined;
 }
 
-/** Prefer sharper DataForSEO CDN / original images over tiny Google thumbnails when both exist. */
-function pickProductImage(...candidates: unknown[]): string | undefined {
-  const urls = candidates
+/** True product page on Google Shopping (gid/catalogid) — not a generic similar-products search. */
+function isSpecificProductShoppingUrl(url?: string) {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    if (!host.includes("google.")) return false;
+    const q = parsed.searchParams.get("q") || "";
+    const prds = parsed.searchParams.get("prds") || "";
+    const hasProductId =
+      parsed.searchParams.get("ibp") === "oshop" ||
+      /gid:|gpcid:|catalogid:|headlineOfferDocid:|PC_/i.test(`${q} ${prds}`);
+    return hasProductId;
+  } catch {
+    return false;
+  }
+}
+
+function isGenericGoogleSearch(url?: string) {
+  if (!url) return true;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    if (!host.includes("google.")) return false;
+    // Generic shopping search (udm=28 / tbm=shop without product ids).
+    if (isSpecificProductShoppingUrl(url)) return false;
+    return (
+      parsed.searchParams.has("udm") ||
+      parsed.searchParams.get("tbm") === "shop" ||
+      parsed.pathname.includes("/search")
+    );
+  } catch {
+    return true;
+  }
+}
+
+function isDirectMerchantUrl(url?: string) {
+  if (!url || !url.startsWith("http")) return false;
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return !host.includes("google.");
+  } catch {
+    return false;
+  }
+}
+
+function extractUrlCandidates(raw: Record<string, unknown>): UrlCandidates {
+  return {
+    directUrl: firstHttpUrl(raw.url),
+    shoppingUrl: firstHttpUrl(raw.shopping_url),
+  };
+}
+
+/** Prefer seller site; else the specific Google product page — never similar-product search. */
+function resolveProductUrl(candidates: UrlCandidates): string | null {
+  if (isDirectMerchantUrl(candidates.directUrl)) return candidates.directUrl!;
+  if (isSpecificProductShoppingUrl(candidates.shoppingUrl)) return candidates.shoppingUrl!;
+  return null;
+}
+
+function pickHdImage(raw: Record<string, unknown>): string | undefined {
+  const images = Array.isArray(raw.product_images) ? raw.product_images : [];
+  const urls = [
+    ...images,
+    raw.image_url,
+    raw.image,
+  ]
     .flatMap((c) => (Array.isArray(c) ? c : [c]))
     .map((c) => (typeof c === "string" ? c.trim() : ""))
     .filter(Boolean)
@@ -236,12 +281,24 @@ function pickProductImage(...candidates: unknown[]): string | undefined {
     });
 
   if (!urls.length) return undefined;
-  const preferred = urls.find(
-    (url) =>
-      url.includes("api.dataforseo.com/cdn") ||
-      (!url.includes("encrypted-tbn") && !url.includes("gstatic.com/shopping")),
+
+  // Prefer DataForSEO CDN (full-size) over Google encrypted thumbnails.
+  const cdn = urls.find((url) => url.includes("api.dataforseo.com/cdn"));
+  if (cdn) return cdn;
+  const nonThumb = urls.find(
+    (url) => !url.includes("encrypted-tbn") && !url.includes("gstatic.com/shopping"),
   );
-  return preferred || urls[0];
+  return nonThumb || urls[0];
+}
+
+function hasUsableProductImage(image?: string) {
+  if (!image) return false;
+  try {
+    const url = new URL(image);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function uniqueGarments(garments: OutfitGarmentInput[]) {
@@ -281,19 +338,61 @@ function mergeProductsRoundRobin(lists: RecommendedProduct[][], max: number) {
   return merged;
 }
 
-type LiveSerpItem = Record<string, unknown>;
+function normalizeMerchantProduct(
+  raw: Record<string, unknown>,
+  input: {
+    category: ProductCategory;
+    garment: OutfitGarmentInput;
+    query: string;
+    countryName: string;
+    countryCode: string;
+  },
+): RecommendedProduct | null {
+  const title = cleanProductTitle(typeof raw.title === "string" ? raw.title : "");
+  if (!title) return null;
+  if (/^buy\b|online australia|shop (all|men|women)|collection/i.test(title)) return null;
 
-function hasUsableProductImage(image?: string) {
-  if (!image) return false;
-  try {
-    const url = new URL(image);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
+  const url = resolveProductUrl(extractUrlCandidates(raw));
+  if (!url || isGenericGoogleSearch(url)) return null;
+
+  const image = pickHdImage(raw);
+  if (!hasUsableProductImage(image)) return null;
+
+  const priced = extractUsablePrice(raw, input.countryCode);
+  if (!priced) return null;
+
+  const store = cleanStoreName(typeof raw.seller === "string" ? raw.seller : "Store");
+
+  const ratingObj =
+    raw.product_rating && typeof raw.product_rating === "object"
+      ? (raw.product_rating as Record<string, unknown>)
+      : raw.rating && typeof raw.rating === "object"
+        ? (raw.rating as Record<string, unknown>)
+        : null;
+
+  return {
+    id: `${input.category}-${crypto.randomUUID()}`,
+    category: input.category,
+    title,
+    image: image!,
+    price: priced.display,
+    currency: priced.currency,
+    store,
+    url,
+    rating:
+      ratingObj && typeof ratingObj.value === "number" ? ratingObj.value : null,
+    reviewsCount:
+      ratingObj && typeof ratingObj.votes_count === "number"
+        ? ratingObj.votes_count
+        : null,
+    country: input.countryName,
+    matchedColorName: input.garment.colorName,
+    matchedHex: input.garment.hex,
+    query: input.query,
+  };
 }
 
-function collectProductsFromLiveSerp(
+function collectProductsFromMerchantItems(
   items: unknown[],
   input: {
     category: ProductCategory;
@@ -304,173 +403,172 @@ function collectProductsFromLiveSerp(
   },
   limit: number,
 ): RecommendedProduct[] {
-  type Candidate = RecommendedProduct & { moreSellers: boolean };
-  const products: Candidate[] = [];
+  const products: RecommendedProduct[] = [];
   const seen = new Set<string>();
 
-  const push = (raw: {
-    title: string;
-    image?: string;
-    price?: unknown;
-    store?: string;
-    url?: string;
-    moreSellers?: boolean;
-    rating?: number | null;
-    reviewsCount?: number | null;
-  }) => {
-    const title = cleanProductTitle(raw.title);
-    if (!title) return;
-    if (/^buy\b|online australia|shop (all|men|women)|collection/i.test(title)) return;
+  const visit = (node: unknown) => {
+    if (products.length >= limit || !node || typeof node !== "object") return;
+    const record = node as Record<string, unknown>;
 
-    const image = (raw.image || "").trim();
-    if (!hasUsableProductImage(image)) return;
+    if (typeof record.title === "string") {
+      const product = normalizeMerchantProduct(record, input);
+      if (product) {
+        const key = dedupeKey(product);
+        if (!seen.has(key)) {
+          seen.add(key);
+          products.push(product);
+        }
+      }
+    }
 
-    const priced = extractUsablePrice(raw.price, input.countryCode);
-    if (!priced) return;
-
-    const store = cleanStoreName(raw.store || "Store");
-    const key = `${title}|${store}`.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-
-    const directUrl = firstHttpUrl(raw.url);
-    products.push({
-      id: `${input.category}-${crypto.randomUUID()}`,
-      category: input.category,
-      title,
-      image,
-      price: priced.display,
-      currency: priced.currency,
-      store,
-      url: directUrl || productOffersUrl(title, store, input.countryCode),
-      rating: raw.rating ?? null,
-      reviewsCount: raw.reviewsCount ?? null,
-      country: input.countryName,
-      matchedColorName: input.garment.colorName,
-      matchedHex: input.garment.hex,
-      query: input.query,
-      moreSellers: Boolean(raw.moreSellers) || Boolean(directUrl),
-    });
+    if (Array.isArray(record.items)) {
+      for (const child of record.items) visit(child);
+    }
   };
 
-  for (const item of items) {
-    if (!item || typeof item !== "object") continue;
-    const block = item as LiveSerpItem;
-    if (!Array.isArray(block.items)) continue;
-
-    // popular_products: rich images; shopping: often has merchant URLs
-    if (block.type !== "popular_products" && block.type !== "shopping") continue;
-
-    for (const child of block.items) {
-      if (!child || typeof child !== "object") continue;
-      const el = child as LiveSerpItem;
-      if (typeof el.title !== "string") continue;
-      const ratingObj =
-        el.rating && typeof el.rating === "object"
-          ? (el.rating as Record<string, unknown>)
-          : null;
-      push({
-        title: el.title,
-        image: pickProductImage(
-          el.image_url,
-          el.image,
-          Array.isArray(el.images) ? el.images : undefined,
-        ),
-        price: el.price,
-        store:
-          typeof el.seller === "string"
-            ? el.seller
-            : typeof el.source === "string"
-              ? el.source
-              : undefined,
-        url: firstHttpUrl(el.marketplace_url, el.url),
-        moreSellers: el.more_sellers === true,
-        rating:
-          ratingObj && typeof ratingObj.value === "number" ? ratingObj.value : null,
-        reviewsCount:
-          ratingObj && typeof ratingObj.votes_count === "number"
-            ? ratingObj.votes_count
-            : null,
-      });
-    }
-  }
-
-  products.sort((a, b) => {
-    if (a.moreSellers !== b.moreSellers) return a.moreSellers ? -1 : 1;
-    return (b.rating ?? 0) - (a.rating ?? 0);
-  });
-
-  return products.slice(0, limit).map(({ moreSellers: _moreSellers, ...product }) => product);
+  for (const item of items) visit(item);
+  return products;
 }
 
-async function runSerpLiveSearch(input: {
-  authHeader: string;
-  countryName: string;
-  countryCode: string;
-  keyword: string;
-}) {
-  const locationCode = LOCATION_CODES[input.countryCode.toUpperCase()];
-  // udm=28 = Google Shopping results (same product cards shoppers see in Shopping).
-  const payloadBody = [
-    {
-      language_name: "English",
-      keyword: input.keyword,
-      depth: 60,
-      search_param: "&udm=28",
-      ...(locationCode
-        ? { location_code: locationCode }
-        : { location_name: input.countryName }),
-    },
-  ];
-
-  const response = await fetch(SERP_LIVE_URL, {
+async function postTasks(
+  authHeader: string,
+  tasks: Array<{
+    language_name: string;
+    keyword: string;
+    priority: number;
+    depth: number;
+    tag: string;
+    location_code?: number;
+    location_name?: string;
+  }>,
+) {
+  const response = await fetch(TASK_POST_URL, {
     method: "POST",
     headers: {
-      Authorization: input.authHeader,
+      Authorization: authHeader,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(payloadBody),
+    body: JSON.stringify(tasks),
   });
 
   const payload = await response.json();
   assertDataForSeoOk(payload);
 
-  const task = payload?.tasks?.[0];
-  if (task?.status_code && task.status_code !== 20000) {
+  const posted = payload?.tasks;
+  if (!Array.isArray(posted) || posted.length === 0) {
     throw new DataForSeoError(
-      task.status_code,
-      task.status_message || "DataForSEO live search failed",
+      payload?.status_code ?? 0,
+      payload?.status_message || "DataForSEO task_post returned no tasks",
     );
   }
 
-  return Array.isArray(task?.result?.[0]?.items) ? (task.result[0].items as unknown[]) : [];
+  for (const task of posted) {
+    if (isTaskFailureStatus(task?.status_code)) {
+      throw new DataForSeoError(
+        task.status_code,
+        task.status_message || "DataForSEO task creation failed",
+      );
+    }
+  }
+
+  return posted as Array<{
+    id?: string;
+    tag?: string;
+    status_code?: number;
+    status_message?: string;
+    data?: { tag?: string };
+  }>;
 }
 
-async function searchLiveProducts(input: {
-  authHeader: string;
-  countryName: string;
-  countryCode: string;
-  category: ProductCategory;
-  garment: OutfitGarmentInput;
-  keyword: string;
-}): Promise<RecommendedProduct[]> {
-  const items = await runSerpLiveSearch({
-    authHeader: input.authHeader,
-    countryName: input.countryName,
-    countryCode: input.countryCode,
-    keyword: input.keyword,
+async function getTaskResult(authHeader: string, taskId: string) {
+  const response = await fetch(`${TASK_GET_URL}/${taskId}`, {
+    method: "GET",
+    headers: { Authorization: authHeader },
   });
+  const payload = await response.json();
+  assertDataForSeoOk(payload);
+  return payload;
+}
 
-  return collectProductsFromLiveSerp(
-    items,
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForTaskResults(
+  authHeader: string,
+  taskIds: string[],
+  options: { maxWaitMs?: number; intervalMs?: number } = {},
+) {
+  const maxWaitMs = options.maxWaitMs ?? 90_000;
+  const intervalMs = options.intervalMs ?? 2_500;
+  const pending = new Set(taskIds);
+  const completed = new Map<string, Record<string, unknown>>();
+  const failures: Error[] = [];
+  const deadline = Date.now() + maxWaitMs;
+
+  while (pending.size > 0 && Date.now() < deadline) {
+    await Promise.all(
+      [...pending].map(async (taskId) => {
+        try {
+          const payload = await getTaskResult(authHeader, taskId);
+          const task = payload?.tasks?.[0] as Record<string, unknown> | undefined;
+          const statusCode =
+            typeof task?.status_code === "number" ? task.status_code : undefined;
+
+          if (statusCode === 20000) {
+            pending.delete(taskId);
+            completed.set(taskId, task ?? {});
+            return;
+          }
+
+          if (isTaskFailureStatus(statusCode)) {
+            pending.delete(taskId);
+            failures.push(
+              new DataForSeoError(
+                statusCode ?? 0,
+                (typeof task?.status_message === "string" && task.status_message) ||
+                  "DataForSEO task failed",
+              ),
+            );
+          }
+        } catch (error) {
+          console.error("[product-recommendations] poll failed", taskId, error);
+        }
+      }),
+    );
+
+    if (pending.size > 0) await sleep(intervalMs);
+  }
+
+  if (completed.size === 0) {
+    if (failures[0]) throw failures[0];
+    throw new Error("DataForSEO task timed out");
+  }
+
+  return completed;
+}
+
+function productsFromCompletedTask(
+  meta: CategoryTask,
+  completedTask: Record<string, unknown>,
+  countryName: string,
+  countryCode: string,
+  limit = PRODUCTS_PER_VARIANT,
+): RecommendedProduct[] {
+  const result = Array.isArray(completedTask.result) ? completedTask.result : [];
+  const resultItems = (result[0] as { items?: unknown[] } | undefined)?.items;
+  if (!Array.isArray(resultItems)) return [];
+
+  return collectProductsFromMerchantItems(
+    resultItems,
     {
-      category: input.category,
-      garment: input.garment,
-      query: input.keyword,
-      countryName: input.countryName,
-      countryCode: input.countryCode,
+      category: meta.category,
+      garment: meta.garment,
+      query: meta.keyword,
+      countryName,
+      countryCode,
     },
-    PRODUCTS_PER_VARIANT,
+    limit,
   );
 }
 
@@ -489,75 +587,137 @@ export async function fetchProductRecommendations(input: {
   }
 
   const authHeader = basicAuthHeader(credentials.login, credentials.password);
+  const locationCode = LOCATION_CODES[input.countryCode.toUpperCase()];
 
-  const tops = uniqueGarments(input.looks.map((look) => look.top)).slice(0, MAX_COLOR_VARIANTS);
-  const bottoms = uniqueGarments(input.looks.map((look) => look.bottom)).slice(0, MAX_COLOR_VARIANTS);
+  const tops = uniqueGarments(input.looks.map((look) => look.top)).slice(
+    0,
+    MAX_COLOR_VARIANTS,
+  );
+  const bottoms = uniqueGarments(input.looks.map((look) => look.bottom)).slice(
+    0,
+    MAX_COLOR_VARIANTS,
+  );
 
-  const tasks = [
+  const categoryTasks: CategoryTask[] = [
     ...tops.map((garment) => ({
       category: "top" as const,
-      garment,
       keyword: buildSearchKeyword(input.gender, garment),
+      garment,
     })),
     ...bottoms.map((garment) => ({
       category: "bottom" as const,
-      garment,
       keyword: buildSearchKeyword(input.gender, garment),
+      garment,
     })),
   ];
 
-  console.info(
-    "[product-recommendations] live serp search",
-    tasks.map((task) => ({ category: task.category, keyword: task.keyword })),
+  const requestTags = categoryTasks.map((task) => `${task.category}:${task.keyword}`);
+
+  const posted = await postTasks(
+    authHeader,
+    categoryTasks.map((task, index) => ({
+      language_name: "English",
+      keyword: task.keyword,
+      priority: 2,
+      depth: 60,
+      tag: requestTags[index]!,
+      ...(locationCode
+        ? { location_code: locationCode }
+        : { location_name: input.countryName }),
+    })),
   );
 
-  const settled = await Promise.allSettled(
-    tasks.map((task) =>
-      searchLiveProducts({
-        authHeader,
-        countryName: input.countryName,
-        countryCode: input.countryCode,
-        category: task.category,
-        garment: task.garment,
-        keyword: task.keyword,
-      }),
-    ),
+  const postedWithMeta = posted.flatMap((item) => {
+    const id = typeof item.id === "string" ? item.id : undefined;
+    const tag =
+      (typeof item.tag === "string" && item.tag) ||
+      (typeof item.data?.tag === "string" ? item.data.tag : "");
+    const metaIndex = requestTags.indexOf(tag);
+    const meta = metaIndex >= 0 ? categoryTasks[metaIndex] : undefined;
+    if (!id || !meta) return [];
+    return [{ id, meta }];
+  });
+
+  const linked =
+    postedWithMeta.length > 0
+      ? postedWithMeta
+      : posted
+          .map((item, index) => ({
+            id: item.id,
+            meta: categoryTasks[index],
+          }))
+          .filter(
+            (item): item is { id: string; meta: CategoryTask } =>
+              Boolean(item.id && item.meta),
+          );
+
+  if (linked.length === 0) {
+    throw new Error("DataForSEO did not return a task id");
+  }
+
+  console.info(
+    "[product-recommendations] merchant products posted",
+    linked.map((item) => ({
+      id: item.id,
+      category: item.meta.category,
+      keyword: item.meta.keyword,
+    })),
+  );
+
+  const completedById = await waitForTaskResults(
+    authHeader,
+    linked.map((item) => item.id),
+    { maxWaitMs: 90_000, intervalMs: 2_500 },
+  );
+
+  console.info(
+    "[product-recommendations] merchant completed",
+    completedById.size,
+    "of",
+    linked.length,
   );
 
   const topLists: RecommendedProduct[][] = [];
   const bottomLists: RecommendedProduct[][] = [];
   const failures: unknown[] = [];
 
-  settled.forEach((result, index) => {
-    const meta = tasks[index]!;
-    if (result.status === "rejected") {
-      failures.push(result.reason);
-      console.error("[product-recommendations] live search failed", meta.keyword, result.reason);
-      return;
-    }
+  for (const { id, meta } of linked) {
+    const completed = completedById.get(id);
+    if (!completed) continue;
 
-    // Keep only complete product cards before merging.
-    const usable = result.value.filter(
-      (product) => hasUsableProductImage(product.image) && Boolean(product.price?.trim()),
+    const products = productsFromCompletedTask(
+      meta,
+      completed,
+      input.countryName,
+      input.countryCode,
+    ).filter(
+      (product) =>
+        hasUsableProductImage(product.image) &&
+        Boolean(product.price?.trim()) &&
+        Boolean(product.url) &&
+        !isGenericGoogleSearch(product.url),
     );
 
     console.info(
       "[product-recommendations] products",
       meta.category,
-      usable.length,
+      products.length,
       "from",
       meta.keyword,
     );
 
-    if (meta.category === "top") topLists.push(usable);
-    else bottomLists.push(usable);
-  });
+    if (meta.category === "top") topLists.push(products);
+    else bottomLists.push(products);
+  }
 
   const top = mergeProductsRoundRobin(topLists, PRODUCTS_PER_CATEGORY);
   const bottom = mergeProductsRoundRobin(bottomLists, PRODUCTS_PER_CATEGORY);
 
   if (top.length === 0 && bottom.length === 0) {
     if (failures[0]) throw failures[0];
+    if (completedById.size === 0) {
+      throw new Error("DataForSEO task timed out");
+    }
     return { ok: true, products: { top: [], bottom: [] } };
   }
 
