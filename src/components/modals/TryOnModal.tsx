@@ -96,8 +96,8 @@ export function TryOnModal({
                   <FillImage
                     src={userImage}
                     alt="Your photo"
-                    fit="contain"
-                    tone="light"
+                    fit="cover"
+                    tone="dark"
                     showBlur={false}
                   />
                 ) : (
