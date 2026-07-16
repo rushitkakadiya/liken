@@ -1,6 +1,6 @@
 /**
  * Full photo visible (no cropping) with a soft blurred fill behind empty edges.
- * Fits the image inside the frame — top-to-bottom and left-to-right.
+ * Main image uses absolute + object-contain so it always paints and never crops.
  */
 export function ContainedPhoto({
   src,
@@ -13,27 +13,20 @@ export function ContainedPhoto({
 }) {
   return (
     <div className={`relative overflow-hidden bg-[#2a2224] ${className}`}>
-      {/* Soft fill from the same image — removes black empty bars */}
       <img
         src={src}
         alt=""
         aria-hidden
-        className="pointer-events-none absolute inset-0 h-full w-full scale-[1.35] object-cover opacity-60 blur-2xl"
-        loading="lazy"
+        className="pointer-events-none absolute inset-0 z-0 h-full w-full scale-[1.25] object-cover opacity-55 blur-2xl"
         decoding="async"
       />
-      <div className="pointer-events-none absolute inset-0 bg-[#1c1618]/25" aria-hidden />
-
-      {/* Entire image fitted inside the box — nothing cropped */}
-      <div className="absolute inset-0 z-10 flex items-center justify-center p-1.5 sm:p-2">
-        <img
-          src={src}
-          alt={alt}
-          className="max-h-full max-w-full h-auto w-auto object-contain"
-          loading="lazy"
-          decoding="async"
-        />
-      </div>
+      <div className="pointer-events-none absolute inset-0 z-[1] bg-[#1c1618]/20" aria-hidden />
+      <img
+        src={src}
+        alt={alt}
+        className="absolute inset-0 z-10 h-full w-full object-contain object-center"
+        decoding="async"
+      />
     </div>
   );
 }
