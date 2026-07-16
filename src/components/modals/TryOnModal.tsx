@@ -93,14 +93,14 @@ export function TryOnModal({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <Panel label="Your photo">
                 {userImage ? (
-                  <FillImage src={userImage} alt="Your photo" />
+                  <FillImage src={userImage} alt="Your photo" tone="dark" />
                 ) : (
                   <Empty text="No photo uploaded" />
                 )}
               </Panel>
               <Panel label="Selected product">
                 {product?.image ? (
-                  <FillImage src={product.image} alt={product.title} />
+                  <FillImage src={product.image} alt={product.title} tone="light" />
                 ) : (
                   <Empty text="No product image" />
                 )}
@@ -114,7 +114,7 @@ export function TryOnModal({
                     </div>
                   </div>
                 ) : preview ? (
-                  <FillImage src={preview} alt="Generated try-on preview" />
+                  <FillImage src={preview} alt="Generated try-on preview" tone="dark" />
                 ) : (
                   <Empty text="Click Generate Preview" />
                 )}
@@ -196,8 +196,16 @@ function Panel({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function FillImage({ src, alt }: { src: string; alt: string }) {
-  return <ContainedPhoto src={src} alt={alt} className="absolute inset-0" />;
+function FillImage({
+  src,
+  alt,
+  tone = "dark",
+}: {
+  src: string;
+  alt: string;
+  tone?: "dark" | "light";
+}) {
+  return <ContainedPhoto src={src} alt={alt} tone={tone} className="absolute inset-0 h-full w-full" />;
 }
 
 function Empty({ text }: { text: string }) {

@@ -1,6 +1,5 @@
 import { useState, type ReactNode } from "react";
 import { Upload, X } from "lucide-react";
-import { ContainedPhoto } from "@/components/ui/ContainedPhoto";
 
 export function UploadCard({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) {
   const [drag, setDrag] = useState(false);
@@ -21,8 +20,25 @@ export function UploadCard({ value, onChange }: { value: string | null; onChange
     >
       {value ? (
         <>
-          <ContainedPhoto src={value} alt="Uploaded photo preview" className="absolute inset-0" />
-          <button onClick={() => onChange(null)} className="absolute top-3 right-3 z-20 h-9 w-9 rounded-full bg-black/60 backdrop-blur grid place-items-center text-white hover:bg-black/80" aria-label="Remove uploaded photo">
+          {/* Soft blur fill (no black bars) + full photo visible */}
+          <img
+            src={value}
+            alt=""
+            aria-hidden
+            className="pointer-events-none absolute inset-0 h-full w-full scale-125 object-cover opacity-50 blur-2xl"
+            decoding="async"
+          />
+          <img
+            src={value}
+            alt="Uploaded photo preview"
+            className="absolute inset-0 z-10 h-full w-full object-contain object-center"
+            decoding="async"
+          />
+          <button
+            onClick={() => onChange(null)}
+            className="absolute top-3 right-3 z-20 h-9 w-9 rounded-full bg-black/60 backdrop-blur grid place-items-center text-white hover:bg-black/80"
+            aria-label="Remove uploaded photo"
+          >
             <X size={16} />
           </button>
         </>

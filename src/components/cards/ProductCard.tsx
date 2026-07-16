@@ -10,26 +10,24 @@ export function ProductCard({
 }) {
   return (
     <div className="glass-card overflow-hidden flex flex-col h-full">
-      {/* Soft fill + object-cover: every card fills the same frame, no black letterboxing. */}
-      <div className="relative aspect-[3/4] overflow-hidden bg-[#f2ebe6]">
+      {/* Full product visible + soft fill (no black bars, no cropping). */}
+      <div className="relative aspect-[3/4] overflow-hidden bg-[#efeae6]">
         {product.image ? (
           <>
             <img
               src={product.image}
               alt=""
               aria-hidden
-              className="absolute inset-0 h-full w-full scale-110 object-cover opacity-50 blur-2xl"
-              loading="lazy"
+              className="pointer-events-none absolute inset-0 z-0 h-full w-full scale-125 object-cover opacity-45 blur-2xl"
               decoding="async"
               referrerPolicy="no-referrer"
             />
             <img
               src={product.image}
               alt={product.title}
-              className="absolute inset-0 z-10 h-full w-full object-cover object-center"
+              className="absolute inset-0 z-10 h-full w-full object-contain object-center"
               width={400}
               height={533}
-              loading="lazy"
               decoding="async"
               referrerPolicy="no-referrer"
             />
@@ -41,7 +39,7 @@ export function ProductCard({
           {product.country}
         </span>
         <span
-          className="absolute top-3 right-3 z-20 h-5 w-5 rounded-full ring-1 ring-black/10 ring-offset-1 ring-offset-[#f2ebe6]"
+          className="absolute top-3 right-3 z-20 h-5 w-5 rounded-full ring-1 ring-black/10 ring-offset-1 ring-offset-[#efeae6]"
           style={{ backgroundColor: product.matchedHex }}
           title={product.matchedColorName}
         />
