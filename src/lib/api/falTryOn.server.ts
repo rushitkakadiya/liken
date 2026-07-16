@@ -18,39 +18,88 @@ async function getFalKey() {
   return (await getFalKeyFromSecrets()).trim();
 }
 
-function dataUrlToBlob(dataUrl: string) {
-  const [header, base64] = dataUrl.split(",");
-  const mimeType = header.match(/:(.*?);/)?.[1] ?? "image/jpeg";
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: mimeType });
+function extensionForMime(mime: string) {
+  if (mime.includes("png")) return "png";
+  if (mime.includes("webp")) return "webp";
+  if (mime.includes("gif")) return "gif";
+  return "jpg";
 }
 
-async function ensureAccessibleImageUrl(imageUrl: string, falKey: string) {
-  if (imageUrl.startsWith("data:")) {
-    fal.config({ credentials: falKey });
-    const blob = dataUrlToBlob(imageUrl);
-    return fal.storage.upload(blob);
+function dataUrlToFile(dataUrl: string, filenameBase: string) {
+  const match = dataUrl.match(/^data:([^;,]+)?(;base64)?,(.*)$/s);
+  if (!match) {
+    throw new Error("INVALID_USER_IMAGE");
   }
 
-  if (!imageUrl.startsWith("http://") && !imageUrl.startsWith("https://")) {
+  const mimeType = (match[1] || "image/jpeg").trim() || "image/jpeg";
+  const isBase64 = Boolean(match[2]);
+  const payload = match[3] || "";
+
+  let bytes: Uint8Array;
+  if (isBase64) {
+    const binary = atob(payload);
+    bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  } else {
+    const decoded = decodeURIComponent(payload);
+    bytes = new TextEncoder().encode(decoded);
+  }
+
+  const ext = extensionForMime(mimeType);
+  return new File([bytes], `${filenameBase}.${ext}`, { type: mimeType });
+}
+
+async function remoteImageToFile(imageUrl: string, filenameBase: string) {
+  const response = await fetch(imageUrl, {
+    headers: {
+      // Some CDNs block empty/bot user-agents.
+      "User-Agent": "liken-tryon/1.0",
+      Accept: "image/*,*/*",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("PRODUCT_IMAGE_INACCESSIBLE");
+  }
+
+  const mimeType = (response.headers.get("content-type") || "image/jpeg")
+    .split(";")[0]!
+    .trim();
+  if (!mimeType.startsWith("image/")) {
+    throw new Error("PRODUCT_IMAGE_INACCESSIBLE");
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const ext = extensionForMime(mimeType);
+  return new File([buffer], `${filenameBase}.${ext}`, { type: mimeType });
+}
+
+/** Upload to fal storage so nano-banana always gets a clean https URL. */
+async function toFalHostedUrl(imageUrl: string, filenameBase: string) {
+  if (imageUrl.startsWith("data:")) {
+    const file = dataUrlToFile(imageUrl, filenameBase);
+    return fal.storage.upload(file);
+  }
+
+  if (!/^https?:\/\//i.test(imageUrl)) {
     throw new Error("INVALID_IMAGE_URL");
   }
 
-  return imageUrl;
+  // Always re-host product/CDN images — fal rejects many shopping CDN URL patterns.
+  const file = await remoteImageToFile(imageUrl, filenameBase);
+  return fal.storage.upload(file);
 }
 
-async function verifyRemoteImageAccessible(imageUrl: string) {
-  try {
-    const response = await fetch(imageUrl, { method: "HEAD" });
-    if (response.ok) return true;
+function extractFalErrorMessage(error: unknown) {
+  if (!(error instanceof Error)) return "UNKNOWN";
+  const message = error.message || "UNKNOWN";
 
-    const getResponse = await fetch(imageUrl, { method: "GET" });
-    return getResponse.ok;
-  } catch {
-    return false;
+  // fal / Zod often returns: "ValidationError: ... The string did not match the expected pattern"
+  if (/did not match the expected pattern/i.test(message)) {
+    return "IMAGE_URL_PATTERN";
   }
+
+  return message;
 }
 
 export async function generateTryOnWithFal(input: {
@@ -66,30 +115,53 @@ export async function generateTryOnWithFal(input: {
 
   fal.config({ credentials: falKey });
 
-  const userUrl = await ensureAccessibleImageUrl(input.userImageUrl, falKey);
+  let userUrl: string;
+  let productUrl: string;
 
-  const productAccessible = await verifyRemoteImageAccessible(input.productImageUrl);
-  if (!productAccessible) {
+  try {
+    userUrl = await toFalHostedUrl(input.userImageUrl, "liken-user");
+  } catch (error) {
+    console.error("[try-on] user image upload failed", error);
+    throw new Error("INVALID_USER_IMAGE");
+  }
+
+  try {
+    productUrl = await toFalHostedUrl(input.productImageUrl, "liken-product");
+  } catch (error) {
+    console.error("[try-on] product image upload failed", error);
     throw new Error("PRODUCT_IMAGE_INACCESSIBLE");
   }
 
   const prompt = `${buildTryOnPrompt(input.category)} Product: ${input.productTitle}.`;
 
-  const result = await fal.subscribe("fal-ai/nano-banana-2/edit", {
-    input: {
-      prompt,
-      image_urls: [userUrl, input.productImageUrl],
-      num_images: 1,
-      output_format: "png",
-      aspect_ratio: "auto",
-    },
-    logs: true,
-  });
+  try {
+    const result = await fal.subscribe("fal-ai/nano-banana-2/edit", {
+      input: {
+        prompt,
+        image_urls: [userUrl, productUrl],
+        num_images: 1,
+        output_format: "png",
+        aspect_ratio: "auto",
+        resolution: "1K",
+      },
+      logs: true,
+    });
 
-  const generatedImageUrl = result.data?.images?.[0]?.url;
-  if (!generatedImageUrl) {
-    throw new Error("INVALID_FAL_RESPONSE");
+    const generatedImageUrl = result.data?.images?.[0]?.url;
+    if (!generatedImageUrl) {
+      throw new Error("INVALID_FAL_RESPONSE");
+    }
+
+    return { generatedImageUrl, requestId: result.requestId || "unknown" };
+  } catch (error) {
+    const detail = extractFalErrorMessage(error);
+    console.error("[try-on] fal subscribe failed", detail, error);
+    if (detail === "IMAGE_URL_PATTERN") {
+      throw new Error("IMAGE_URL_PATTERN");
+    }
+    if (detail === "INVALID_FAL_RESPONSE") {
+      throw new Error("INVALID_FAL_RESPONSE");
+    }
+    throw new Error("FAL_FAILED");
   }
-
-  return { generatedImageUrl, requestId: result.requestId || "unknown" };
 }

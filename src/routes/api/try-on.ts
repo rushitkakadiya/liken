@@ -121,7 +121,30 @@ export const Route = createFileRoute("/api/try-on")({
               {
                 success: false,
                 error: "PRODUCT_IMAGE_INACCESSIBLE",
-                message: "This product image cannot be used for try-on.",
+                message: "This product image cannot be used for try-on. Try another product.",
+              } satisfies TryOnResponse,
+              { status: 400 },
+            );
+          }
+
+          if (message === "INVALID_USER_IMAGE" || message === "INVALID_IMAGE_URL") {
+            return Response.json(
+              {
+                success: false,
+                error: "MISSING_USER_IMAGE",
+                message: "Your photo could not be processed. Please re-upload a clear JPG or PNG photo.",
+              } satisfies TryOnResponse,
+              { status: 400 },
+            );
+          }
+
+          if (message === "IMAGE_URL_PATTERN") {
+            return Response.json(
+              {
+                success: false,
+                error: "INVALID_RESPONSE",
+                message:
+                  "This product image format is not supported for try-on. Please try a different product.",
               } satisfies TryOnResponse,
               { status: 400 },
             );
