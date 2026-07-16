@@ -93,14 +93,14 @@ export function TryOnModal({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <Panel label="Your photo">
                 {userImage ? (
-                  <FillImage src={userImage} alt="Your photo" tone="dark" />
+                  <FillImage src={userImage} alt="Your photo" fit="contain" tone="dark" />
                 ) : (
                   <Empty text="No photo uploaded" />
                 )}
               </Panel>
               <Panel label="Selected product">
                 {product?.image ? (
-                  <FillImage src={product.image} alt={product.title} tone="light" />
+                  <FillImage src={product.image} alt={product.title} fit="cover" tone="light" />
                 ) : (
                   <Empty text="No product image" />
                 )}
@@ -114,7 +114,7 @@ export function TryOnModal({
                     </div>
                   </div>
                 ) : preview ? (
-                  <FillImage src={preview} alt="Generated try-on preview" tone="dark" />
+                  <FillImage src={preview} alt="Generated try-on preview" fit="contain" tone="dark" />
                 ) : (
                   <Empty text="Click Generate Preview" />
                 )}
@@ -200,12 +200,22 @@ function FillImage({
   src,
   alt,
   tone = "dark",
+  fit = "contain",
 }: {
   src: string;
   alt: string;
   tone?: "dark" | "light";
+  fit?: "contain" | "cover";
 }) {
-  return <ContainedPhoto src={src} alt={alt} tone={tone} className="absolute inset-0 h-full w-full" />;
+  return (
+    <ContainedPhoto
+      src={src}
+      alt={alt}
+      tone={tone}
+      fit={fit}
+      className="absolute inset-0 h-full w-full"
+    />
+  );
 }
 
 function Empty({ text }: { text: string }) {

@@ -1,21 +1,24 @@
 /**
- * Shows the complete image (object-contain — no cropping) with a soft
- * blurred fill behind empty edges so there is never a black letterbox.
+ * Photo frame with soft blurred fill (never black empty bars).
+ * - contain: full image visible (user photos)
+ * - cover: fills the whole frame (product images)
  */
 export function ContainedPhoto({
   src,
   alt,
   className = "",
-  /** Warm light fill suits product shots; dark suits selfies on the studio UI. */
   tone = "dark",
+  fit = "contain",
 }: {
   src: string;
   alt: string;
   className?: string;
   tone?: "dark" | "light";
+  fit?: "contain" | "cover";
 }) {
   const base = tone === "light" ? "bg-[#efeae6]" : "bg-[#241e20]";
-  const veil = tone === "light" ? "bg-white/25" : "bg-[#1c1618]/20";
+  const veil = tone === "light" ? "bg-white/20" : "bg-[#1c1618]/20";
+  const objectFit = fit === "cover" ? "object-cover" : "object-contain";
 
   return (
     <div className={`relative h-full w-full overflow-hidden ${base} ${className}`}>
@@ -31,7 +34,7 @@ export function ContainedPhoto({
       <img
         src={src}
         alt={alt}
-        className="absolute inset-0 z-10 h-full w-full object-contain object-center"
+        className={`absolute inset-0 z-10 h-full w-full object-center ${objectFit}`}
         decoding="async"
         referrerPolicy="no-referrer"
       />

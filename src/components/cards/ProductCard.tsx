@@ -10,7 +10,7 @@ export function ProductCard({
 }) {
   return (
     <div className="glass-card overflow-hidden flex flex-col h-full">
-      {/* Full product visible + soft fill (no black bars, no cropping). */}
+      {/* Product fills the frame (cover) with soft fill — no black bars. */}
       <div className="relative aspect-[3/4] overflow-hidden bg-[#efeae6]">
         {product.image ? (
           <>
@@ -18,14 +18,14 @@ export function ProductCard({
               src={product.image}
               alt=""
               aria-hidden
-              className="pointer-events-none absolute inset-0 z-0 h-full w-full scale-125 object-cover opacity-45 blur-2xl"
+              className="pointer-events-none absolute inset-0 z-0 h-full w-full scale-110 object-cover opacity-45 blur-2xl"
               decoding="async"
               referrerPolicy="no-referrer"
             />
             <img
               src={product.image}
               alt={product.title}
-              className="absolute inset-0 z-10 h-full w-full object-contain object-center"
+              className="absolute inset-0 z-10 h-full w-full object-cover object-center"
               width={400}
               height={533}
               decoding="async"
