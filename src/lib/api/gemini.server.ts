@@ -90,7 +90,8 @@ export async function analyzeImageWithGemini(input: {
       contents,
       generationConfig: {
         responseMimeType: "application/json",
-        temperature: 0.25,
+        temperature: 0.2,
+        maxOutputTokens: 8192,
         ...(includeThinkingBudget
           ? {
               thinkingConfig: {
@@ -101,39 +102,46 @@ export async function analyzeImageWithGemini(input: {
       },
     });
 
-  let response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": input.apiKey,
-    },
-    body: buildBody(true),
-  });
-
-  // Some API key/project variants reject thinkingConfig — retry without it.
-  if (!response.ok && response.status === 400) {
-    const firstError = await response.text();
-    console.warn("[color-analysis] retrying Gemini without thinkingConfig:", firstError.slice(0, 240));
-    response = await fetch(url, {
+  async function requestOnce(includeThinkingBudget: boolean) {
+    const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-goog-api-key": input.apiKey,
       },
-      body: buildBody(false),
+      body: buildBody(includeThinkingBudget),
     });
-  }
-  if (!response.ok) {
-    const detail = await response.text();
-    console.error("[color-analysis] Gemini error:", response.status, detail.slice(0, 800));
-    throw parseGeminiError(response.status, detail);
+
+    if (!response.ok) {
+      const detail = await response.text();
+      return { ok: false as const, status: response.status, detail, payload: null };
+    }
+
+    const payload = (await response.json()) as GeminiPayload;
+    return { ok: true as const, status: response.status, detail: "", payload };
   }
 
-  const payload = (await response.json()) as GeminiPayload;
+  let result = await requestOnce(true);
+
+  // Some API key/project variants reject thinkingConfig — retry without it.
+  if (!result.ok && result.status === 400) {
+    console.warn(
+      "[color-analysis] retrying Gemini without thinkingConfig:",
+      result.detail.slice(0, 240),
+    );
+    result = await requestOnce(false);
+  }
+
+  if (!result.ok || !result.payload) {
+    console.error("[color-analysis] Gemini error:", result.status, result.detail.slice(0, 800));
+    throw parseGeminiError(result.status, result.detail);
+  }
+
+  const payload = result.payload;
 
   if (payload.error?.message) {
     console.error("[color-analysis] Gemini payload error:", payload.error.message);
-    throw parseGeminiError(response.status, payload.error.message);
+    throw parseGeminiError(result.status, payload.error.message);
   }
 
   const blockReason = payload.promptFeedback?.blockReason;
@@ -146,7 +154,22 @@ export async function analyzeImageWithGemini(input: {
   }
 
   const finishReason = payload.candidates?.[0]?.finishReason;
-  const text = extractGeminiText(payload);
+  let text = extractGeminiText(payload);
+
+  // One automatic retry when the model returns empty / truncated JSON.
+  if (!text || finishReason === "MAX_TOKENS") {
+    console.warn("[color-analysis] weak first response, retrying once", {
+      finishReason,
+      textLen: text.length,
+    });
+    const retry = await requestOnce(false);
+    if (retry.ok && retry.payload) {
+      const retryText = extractGeminiText(retry.payload);
+      if (retryText) {
+        text = retryText;
+      }
+    }
+  }
 
   if (!text) {
     console.error(
@@ -174,7 +197,55 @@ export async function analyzeImageWithGemini(input: {
     );
   }
 
-  return parseColorAnalysisResponse(text, input.occasion);
+  try {
+    return parseColorAnalysisResponse(text, input.occasion);
+  } catch (error) {
+    if (!(error instanceof ColorAnalysisError) || error.code !== "INVALID_JSON") {
+      throw error;
+    }
+
+    // Schema/parse miss — ask once more with a stricter JSON reminder.
+    console.warn("[color-analysis] parse failed, requesting cleaner JSON once");
+    const strictContents = [
+      {
+        parts: [
+          {
+            inline_data: {
+              mime_type: input.mimeType || "image/jpeg",
+              data: input.imageBase64,
+            },
+          },
+          {
+            text: `${prompt}
+
+IMPORTANT: Your previous answer was invalid. Reply with ONE valid JSON object only — no markdown, no commentary.`,
+          },
+        ],
+      },
+    ];
+
+    const strictResponse = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": input.apiKey,
+      },
+      body: JSON.stringify({
+        contents: strictContents,
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature: 0.1,
+          maxOutputTokens: 8192,
+        },
+      }),
+    });
+
+    if (!strictResponse.ok) throw error;
+    const strictPayload = (await strictResponse.json()) as GeminiPayload;
+    const strictText = extractGeminiText(strictPayload);
+    if (!strictText) throw error;
+    return parseColorAnalysisResponse(strictText, input.occasion);
+  }
 }
 
 export async function getGeminiApiKey() {
