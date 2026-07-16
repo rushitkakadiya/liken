@@ -3,6 +3,7 @@ import { X, Wand2, Image as ImageIcon, Download, RotateCcw, ExternalLink, Loader
 import { motion, AnimatePresence } from "framer-motion";
 import { generateTryOn, getRemainingTryOns } from "@/services/virtualTryOnService";
 import type { Product } from "@/services/productRecommendationService";
+import { ContainedPhoto } from "@/components/ui/ContainedPhoto";
 
 export function TryOnModal({
   open,
@@ -196,25 +197,7 @@ function Panel({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function FillImage({ src, alt }: { src: string; alt: string }) {
-  return (
-    <>
-      <img
-        src={src}
-        alt=""
-        aria-hidden
-        className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-35"
-        loading="lazy"
-        decoding="async"
-      />
-      <img
-        src={src}
-        alt={alt}
-        className="absolute inset-0 w-full h-full object-cover object-center"
-        loading="lazy"
-        decoding="async"
-      />
-    </>
-  );
+  return <ContainedPhoto src={src} alt={alt} className="absolute inset-0" />;
 }
 
 function Empty({ text }: { text: string }) {
