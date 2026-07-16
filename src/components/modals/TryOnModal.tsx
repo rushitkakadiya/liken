@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X, Wand2, Image as ImageIcon, Download, RotateCcw, ExternalLink, Loader2 } from "lucide-react";
+import { X, Wand2, Image as ImageIcon, RotateCcw, ExternalLink, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { generateTryOn, getRemainingTryOns } from "@/services/virtualTryOnService";
 import type { Product } from "@/services/productRecommendationService";
@@ -53,16 +53,6 @@ export function TryOnModal({
     setError(null);
     setLoading(false);
     onClose();
-  };
-
-  const downloadPreview = () => {
-    if (!preview) return;
-    const anchor = document.createElement("a");
-    anchor.href = preview;
-    anchor.download = "liken-try-on.png";
-    anchor.target = "_blank";
-    anchor.rel = "noreferrer";
-    anchor.click();
   };
 
   return (
@@ -151,12 +141,6 @@ export function TryOnModal({
               </div>
             ) : (
               <div className="flex flex-wrap justify-center gap-3">
-                <button
-                  onClick={downloadPreview}
-                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full border border-white/10 text-sm text-white hover:border-white/20"
-                >
-                  <Download size={14} /> Download
-                </button>
                 <button
                   onClick={() => {
                     onTryAnother?.();
