@@ -3,6 +3,7 @@ import { getUser, isPremium, setUser } from "@/lib/auth";
 import type { Product } from "./productRecommendationService";
 import type { TryOnResponse } from "@/types/tryOn";
 import { PREMIUM_MONTHLY_LIMIT } from "@/types/database";
+import { compressDataUrlForTryOn } from "./colorAnalysisMappers";
 
 export type TryOnInput = {
   userImage: string;
@@ -51,6 +52,10 @@ export function checkTryOnAllowed() {
   return { ok: true as const, remaining };
 }
 
+function normalizeCategory(category: unknown): "top" | "bottom" {
+  return category === "bottom" ? "bottom" : "top";
+}
+
 export async function generateTryOn(input: TryOnInput): Promise<TryOnResult> {
   const allowed = checkTryOnAllowed();
   if (!allowed.ok) {
@@ -70,26 +75,46 @@ export async function generateTryOn(input: TryOnInput): Promise<TryOnResult> {
     throw new Error("Your session expired. Please sign in again.");
   }
 
-  const response = await fetch("/api/try-on", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify({
-      userImageUrl: input.userImage,
-      productImageUrl: input.product.image,
-      productTitle: input.product.title,
-      category: input.product.category,
-      matchedColorName: input.product.matchedColorName,
-      matchedHex: input.product.matchedHex,
-    }),
-  });
+  // Large phone photos crash Safari's response.json() with
+  // "The string did not match the expected pattern" when the API returns an HTML error page.
+  const userImageUrl = await compressDataUrlForTryOn(input.userImage);
 
-  const payload = (await response.json()) as TryOnResponse;
+  let response: Response;
+  try {
+    response = await fetch("/api/try-on", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        userImageUrl,
+        productImageUrl: input.product.image,
+        productTitle: input.product.title || "Product",
+        category: normalizeCategory(input.product.category),
+        matchedColorName: input.product.matchedColorName || "Color",
+        matchedHex: input.product.matchedHex || "#888888",
+      }),
+    });
+  } catch {
+    throw new Error("Could not reach the try-on service. Please check your connection and try again.");
+  }
+
+  const rawText = await response.text();
+  let payload: TryOnResponse;
+  try {
+    payload = JSON.parse(rawText) as TryOnResponse;
+  } catch {
+    // Safari surfaces non-JSON bodies as "The string did not match the expected pattern".
+    throw new Error(
+      response.status >= 500
+        ? "Try-on service is temporarily unavailable. Please try again in a moment."
+        : "Unable to generate your try-on preview right now. Try a clearer photo or another product.",
+    );
+  }
 
   if (!payload.success) {
-    throw new Error(payload.message);
+    throw new Error(payload.message || "Unable to generate your try-on preview right now.");
   }
 
   const current = getUser();

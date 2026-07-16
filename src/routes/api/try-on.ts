@@ -8,10 +8,10 @@ import type { TryOnResponse } from "@/types/tryOn";
 const requestSchema = z.object({
   userImageUrl: z.string().min(1),
   productImageUrl: z.string().min(1),
-  productTitle: z.string().min(1),
+  productTitle: z.string().min(1).default("Product"),
   category: z.enum(["top", "bottom"]),
-  matchedColorName: z.string().min(1),
-  matchedHex: z.string().min(1),
+  matchedColorName: z.string().min(1).default("Color"),
+  matchedHex: z.string().min(1).default("#888888"),
 });
 
 function getBearerToken(request: Request) {

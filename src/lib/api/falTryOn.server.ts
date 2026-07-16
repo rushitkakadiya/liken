@@ -25,7 +25,7 @@ function extensionForMime(mime: string) {
   return "jpg";
 }
 
-function dataUrlToFile(dataUrl: string, filenameBase: string) {
+function dataUrlToBlob(dataUrl: string) {
   const match = dataUrl.match(/^data:([^;,]+)?(;base64)?,(.*)$/s);
   if (!match) {
     throw new Error("INVALID_USER_IMAGE");
@@ -41,20 +41,18 @@ function dataUrlToFile(dataUrl: string, filenameBase: string) {
     bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   } else {
-    const decoded = decodeURIComponent(payload);
-    bytes = new TextEncoder().encode(decoded);
+    bytes = new TextEncoder().encode(decodeURIComponent(payload));
   }
 
-  const ext = extensionForMime(mimeType);
-  return new File([bytes], `${filenameBase}.${ext}`, { type: mimeType });
+  return { blob: new Blob([bytes], { type: mimeType }), mimeType };
 }
 
-async function remoteImageToFile(imageUrl: string, filenameBase: string) {
+async function remoteImageToBlob(imageUrl: string) {
   const response = await fetch(imageUrl, {
     headers: {
-      // Some CDNs block empty/bot user-agents.
-      "User-Agent": "liken-tryon/1.0",
-      Accept: "image/*,*/*",
+      "User-Agent": "Mozilla/5.0 (compatible; liken-tryon/1.0)",
+      Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+      Referer: "https://www.google.com/",
     },
   });
 
@@ -70,36 +68,59 @@ async function remoteImageToFile(imageUrl: string, filenameBase: string) {
   }
 
   const buffer = Buffer.from(await response.arrayBuffer());
-  const ext = extensionForMime(mimeType);
-  return new File([buffer], `${filenameBase}.${ext}`, { type: mimeType });
+  if (buffer.byteLength < 32) {
+    throw new Error("PRODUCT_IMAGE_INACCESSIBLE");
+  }
+
+  return { blob: new Blob([buffer], { type: mimeType }), mimeType };
 }
 
-/** Upload to fal storage so nano-banana always gets a clean https URL. */
+async function uploadBlobToFal(blob: Blob, filenameBase: string) {
+  const ext = extensionForMime(blob.type || "image/jpeg");
+  const file = new File([blob], `${filenameBase}.${ext}`, {
+    type: blob.type || "image/jpeg",
+  });
+  const uploaded = await fal.storage.upload(file);
+  if (typeof uploaded !== "string" || !/^https?:\/\//i.test(uploaded)) {
+    throw new Error("FAL_UPLOAD_FAILED");
+  }
+  return uploaded;
+}
+
+/** Always re-host on fal so nano-banana gets clean https URLs. */
 async function toFalHostedUrl(imageUrl: string, filenameBase: string) {
   if (imageUrl.startsWith("data:")) {
-    const file = dataUrlToFile(imageUrl, filenameBase);
-    return fal.storage.upload(file);
+    const { blob } = dataUrlToBlob(imageUrl);
+    return uploadBlobToFal(blob, filenameBase);
   }
 
   if (!/^https?:\/\//i.test(imageUrl)) {
     throw new Error("INVALID_IMAGE_URL");
   }
 
-  // Always re-host product/CDN images — fal rejects many shopping CDN URL patterns.
-  const file = await remoteImageToFile(imageUrl, filenameBase);
-  return fal.storage.upload(file);
+  const { blob } = await remoteImageToBlob(imageUrl);
+  return uploadBlobToFal(blob, filenameBase);
 }
 
-function extractFalErrorMessage(error: unknown) {
-  if (!(error instanceof Error)) return "UNKNOWN";
-  const message = error.message || "UNKNOWN";
-
-  // fal / Zod often returns: "ValidationError: ... The string did not match the expected pattern"
-  if (/did not match the expected pattern/i.test(message)) {
-    return "IMAGE_URL_PATTERN";
+function extractFalDetail(error: unknown): string {
+  if (!error || typeof error !== "object") {
+    return error instanceof Error ? error.message : "UNKNOWN";
   }
 
-  return message;
+  const record = error as {
+    message?: string;
+    body?: { detail?: Array<{ msg?: string }> | string };
+  };
+
+  const detail = record.body?.detail;
+  if (Array.isArray(detail) && detail[0]?.msg) {
+    return detail.map((item) => item.msg).filter(Boolean).join("; ");
+  }
+  if (typeof detail === "string" && detail.trim()) {
+    return detail;
+  }
+
+  return record.message || "UNKNOWN";
 }
 
 export async function generateTryOnWithFal(input: {
@@ -121,14 +142,14 @@ export async function generateTryOnWithFal(input: {
   try {
     userUrl = await toFalHostedUrl(input.userImageUrl, "liken-user");
   } catch (error) {
-    console.error("[try-on] user image upload failed", error);
+    console.error("[try-on] user image upload failed", extractFalDetail(error), error);
     throw new Error("INVALID_USER_IMAGE");
   }
 
   try {
     productUrl = await toFalHostedUrl(input.productImageUrl, "liken-product");
   } catch (error) {
-    console.error("[try-on] product image upload failed", error);
+    console.error("[try-on] product image upload failed", extractFalDetail(error), error);
     throw new Error("PRODUCT_IMAGE_INACCESSIBLE");
   }
 
@@ -148,15 +169,16 @@ export async function generateTryOnWithFal(input: {
     });
 
     const generatedImageUrl = result.data?.images?.[0]?.url;
-    if (!generatedImageUrl) {
+    if (!generatedImageUrl || !/^https?:\/\//i.test(generatedImageUrl)) {
       throw new Error("INVALID_FAL_RESPONSE");
     }
 
     return { generatedImageUrl, requestId: result.requestId || "unknown" };
   } catch (error) {
-    const detail = extractFalErrorMessage(error);
+    const detail = extractFalDetail(error);
     console.error("[try-on] fal subscribe failed", detail, error);
-    if (detail === "IMAGE_URL_PATTERN") {
+
+    if (/pattern|invalid url|image_urls|scheme/i.test(detail)) {
       throw new Error("IMAGE_URL_PATTERN");
     }
     if (detail === "INVALID_FAL_RESPONSE") {

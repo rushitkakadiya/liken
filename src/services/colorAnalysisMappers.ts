@@ -118,3 +118,44 @@ export function dataUrlToFile(dataUrl: string, filename = "photo.jpg"): File {
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return new File([bytes], filename, { type: mime });
 }
+
+/**
+ * Shrink a data-URL selfie before try-on so the API request stays under
+ * Vercel/Safari payload limits (large phones often break response.json()).
+ */
+export async function compressDataUrlForTryOn(
+  dataUrl: string,
+  options: { maxEdge?: number; quality?: number } = {},
+): Promise<string> {
+  if (!dataUrl.startsWith("data:")) return dataUrl;
+
+  const maxEdge = options.maxEdge ?? 1536;
+  const quality = options.quality ?? 0.85;
+
+  if (typeof document === "undefined") return dataUrl;
+
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("Failed to load image"));
+      img.src = dataUrl;
+    });
+
+    const scale = Math.min(1, maxEdge / Math.max(image.width, image.height));
+    const width = Math.max(1, Math.round(image.width * scale));
+    const height = Math.max(1, Math.round(image.height * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return dataUrl;
+
+    ctx.drawImage(image, 0, 0, width, height);
+    return canvas.toDataURL("image/jpeg", quality);
+  } catch {
+    return dataUrl;
+  }
+}
+
