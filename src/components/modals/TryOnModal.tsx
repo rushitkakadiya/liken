@@ -96,9 +96,9 @@ export function TryOnModal({
                   <FillImage
                     src={userImage}
                     alt="Your photo"
-                    fit="cover"
+                    fit="contain"
                     tone="dark"
-                    showBlur={false}
+                    showBlur={true}
                   />
                 ) : (
                   <Empty text="No photo uploaded" />
@@ -106,7 +106,13 @@ export function TryOnModal({
               </Panel>
               <Panel label="Selected product">
                 {product?.image ? (
-                  <FillImage src={product.image} alt={product.title} fit="cover" tone="light" />
+                  <FillImage
+                    src={product.image}
+                    alt={product.title}
+                    fit="cover"
+                    tone="dark"
+                    showBlur={false}
+                  />
                 ) : (
                   <Empty text="No product image" />
                 )}

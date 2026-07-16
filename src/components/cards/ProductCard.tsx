@@ -10,28 +10,18 @@ export function ProductCard({
 }) {
   return (
     <div className="glass-card overflow-hidden flex flex-col h-full">
-      {/* Product fills the frame (cover) with soft fill — no black bars. */}
-      <div className="relative aspect-[3/4] overflow-hidden bg-[#efeae6]">
+      {/* Product fills the entire frame — no leftover background. */}
+      <div className="relative aspect-[3/4] overflow-hidden bg-[#181516]">
         {product.image ? (
-          <>
-            <img
-              src={product.image}
-              alt=""
-              aria-hidden
-              className="pointer-events-none absolute inset-0 z-0 h-full w-full scale-110 object-cover opacity-45 blur-2xl"
-              decoding="async"
-              referrerPolicy="no-referrer"
-            />
-            <img
-              src={product.image}
-              alt={product.title}
-              className="absolute inset-0 z-10 h-full w-full object-cover object-center"
-              width={400}
-              height={533}
-              decoding="async"
-              referrerPolicy="no-referrer"
-            />
-          </>
+          <img
+            src={product.image}
+            alt={product.title}
+            className="absolute inset-0 z-10 h-full w-full object-cover object-center"
+            width={400}
+            height={533}
+            decoding="async"
+            referrerPolicy="no-referrer"
+          />
         ) : (
           <div className="absolute inset-0" style={{ backgroundColor: product.matchedHex }} />
         )}
@@ -39,7 +29,7 @@ export function ProductCard({
           {product.country}
         </span>
         <span
-          className="absolute top-3 right-3 z-20 h-5 w-5 rounded-full ring-1 ring-black/10 ring-offset-1 ring-offset-[#efeae6]"
+          className="absolute top-3 right-3 z-20 h-5 w-5 rounded-full ring-1 ring-black/10 ring-offset-1 ring-offset-[#181516]"
           style={{ backgroundColor: product.matchedHex }}
           title={product.matchedColorName}
         />
