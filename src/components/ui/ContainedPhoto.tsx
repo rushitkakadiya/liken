@@ -1,6 +1,6 @@
 /**
- * Shows the full photo (object-contain) with a soft blurred fill behind it
- * so portrait/landscape images don't leave awkward black empty bars.
+ * Full photo visible (no cropping) with a soft blurred fill behind empty edges.
+ * Fits the image inside the frame — top-to-bottom and left-to-right.
  */
 export function ContainedPhoto({
   src,
@@ -13,22 +13,27 @@ export function ContainedPhoto({
 }) {
   return (
     <div className={`relative overflow-hidden bg-[#2a2224] ${className}`}>
+      {/* Soft fill from the same image — removes black empty bars */}
       <img
         src={src}
         alt=""
         aria-hidden
-        className="absolute inset-0 h-full w-full scale-125 object-cover opacity-55 blur-2xl"
+        className="pointer-events-none absolute inset-0 h-full w-full scale-[1.35] object-cover opacity-60 blur-2xl"
         loading="lazy"
         decoding="async"
       />
-      <div className="absolute inset-0 bg-[#1a1416]/35" aria-hidden />
-      <img
-        src={src}
-        alt={alt}
-        className="relative z-10 h-full w-full object-contain object-center"
-        loading="lazy"
-        decoding="async"
-      />
+      <div className="pointer-events-none absolute inset-0 bg-[#1c1618]/25" aria-hidden />
+
+      {/* Entire image fitted inside the box — nothing cropped */}
+      <div className="absolute inset-0 z-10 flex items-center justify-center p-1.5 sm:p-2">
+        <img
+          src={src}
+          alt={alt}
+          className="max-h-full max-w-full h-auto w-auto object-contain"
+          loading="lazy"
+          decoding="async"
+        />
+      </div>
     </div>
   );
 }
