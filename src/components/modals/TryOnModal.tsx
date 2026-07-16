@@ -93,7 +93,13 @@ export function TryOnModal({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <Panel label="Your photo">
                 {userImage ? (
-                  <FillImage src={userImage} alt="Your photo" fit="contain" tone="dark" />
+                  <FillImage
+                    src={userImage}
+                    alt="Your photo"
+                    fit="contain"
+                    tone="light"
+                    showBlur={false}
+                  />
                 ) : (
                   <Empty text="No photo uploaded" />
                 )}
@@ -201,11 +207,13 @@ function FillImage({
   alt,
   tone = "dark",
   fit = "contain",
+  showBlur = true,
 }: {
   src: string;
   alt: string;
   tone?: "dark" | "light";
   fit?: "contain" | "cover";
+  showBlur?: boolean;
 }) {
   return (
     <ContainedPhoto
@@ -213,6 +221,7 @@ function FillImage({
       alt={alt}
       tone={tone}
       fit={fit}
+      showBlur={showBlur}
       className="absolute inset-0 h-full w-full"
     />
   );
