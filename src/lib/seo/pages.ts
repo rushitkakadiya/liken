@@ -13,14 +13,28 @@ export const PAGE_SEO = {
     path: "/",
     title: SITE_FULL_NAME,
     description:
-      "Upload a photo and get outfit color combinations designed for your skin tone, occasion, and personal style.",
+      "liken AI analyzes your skin tone and suggests outfit color combinations for your occasion and style — with product picks and virtual try-on for Premium.",
     robots: "index,follow" as const,
   },
   pricing: {
     path: "/pricing",
     title: `Pricing | ${SITE_FULL_NAME}`,
     description:
-      "Color generation is free for everyone. Upgrade to Premium for country-based product suggestions and AI try-on.",
+      "Start free with color generation. Upgrade to Premium for country-based product suggestions and AI virtual try-on on liken.",
+    robots: "index,follow" as const,
+  },
+  terms: {
+    path: "/terms",
+    title: `Terms of Service | ${SITE_FULL_NAME}`,
+    description:
+      "Read liken Terms of Service, including non-cancellable Premium subscriptions and AI result limitations.",
+    robots: "index,follow" as const,
+  },
+  privacy: {
+    path: "/privacy",
+    title: `Privacy Policy | ${SITE_FULL_NAME}`,
+    description:
+      "Learn how liken collects and uses account, photo, and styling data in our Privacy Policy.",
     robots: "index,follow" as const,
   },
   login: {

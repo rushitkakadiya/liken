@@ -20,8 +20,9 @@ import {
   DEFAULT_DESCRIPTION,
   SITE_NAME,
   SITE_FULL_NAME,
-  SITE_ICON_PATH,
   SITE_FAVICON_PATH,
+  SITE_FAVICON_ICO,
+  SITE_APPLE_TOUCH_ICON,
 } from "@/lib/seo/site";
 
 const FONT_STYLESHEET =
@@ -75,11 +76,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     ],
     links: [
       { rel: "stylesheet", href: appCss },
+      { rel: "icon", href: SITE_FAVICON_ICO, sizes: "any" },
+      { rel: "icon", href: "/favicon-16x16.png?v=3", sizes: "16x16", type: "image/png" },
       { rel: "icon", href: SITE_FAVICON_PATH, sizes: "32x32", type: "image/png" },
-      { rel: "icon", href: "/fevicon-16.png", sizes: "16x16", type: "image/png" },
-      { rel: "icon", href: "/fevicon-48.png", sizes: "48x48", type: "image/png" },
-      { rel: "apple-touch-icon", href: "/fevicon-180.png", sizes: "180x180" },
-      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "icon", href: "/favicon-48x48.png?v=3", sizes: "48x48", type: "image/png" },
+      { rel: "apple-touch-icon", href: SITE_APPLE_TOUCH_ICON, sizes: "180x180" },
+      { rel: "manifest", href: "/manifest.webmanifest?v=3" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       { rel: "preload", href: FONT_STYLESHEET, as: "style" },

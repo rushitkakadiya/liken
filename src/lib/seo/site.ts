@@ -1,15 +1,17 @@
 export const SITE_NAME = "liken";
 export const SITE_FULL_NAME = "liken - AI Styling Studio";
-export const SITE_ICON_PATH = "/fevicon.png";
-export const SITE_FAVICON_PATH = "/fevicon-32.png";
+/** Cache-busted so browsers and Google pick up the new Liken mark. */
+export const SITE_ICON_PATH = "/fevicon.png?v=3";
+export const SITE_FAVICON_PATH = "/favicon-32x32.png?v=3";
+export const SITE_FAVICON_ICO = "/favicon.ico?v=3";
+export const SITE_APPLE_TOUCH_ICON = "/apple-touch-icon.png?v=3";
 export const SITE_TAGLINE = "Your AI stylist for colors that actually suit you";
 export const DEFAULT_DESCRIPTION =
-  "Discover outfit color combinations designed for your skin tone, occasion, and personal style.";
+  "liken AI analyzes your skin tone and suggests outfit color combinations for every occasion — with product picks and virtual try-on for Premium.";
 export const TWITTER_HANDLE = "@liken";
 
-/** Hero image already used on the landing page — reused for social previews. */
-export const OG_IMAGE_URL =
-  "https://images.unsplash.com/photo-1492288991661-058aa541ff43?w=1200&h=630&fit=crop&q=80";
+/** Prefer a first-party OG image so Google/social previews stay on-brand. */
+export const OG_IMAGE_URL_PATH = "/android-chrome-512x512.png?v=3";
 
 export const FAQ_ITEMS = [
   {
@@ -32,9 +34,13 @@ export const FAQ_ITEMS = [
     q: "What do I get with Premium?",
     a: "Free includes color generation. Premium adds country-based product suggestions and AI virtual try-on.",
   },
+  {
+    q: "Can I cancel a Premium subscription?",
+    a: "Premium subscriptions are non-cancellable after purchase for the billed period. Please review our Terms before upgrading.",
+  },
 ] as const;
 
-export const PUBLIC_INDEXABLE_PATHS = ["/", "/pricing"] as const;
+export const PUBLIC_INDEXABLE_PATHS = ["/", "/pricing", "/terms", "/privacy"] as const;
 
 export const PRIVATE_PATHS = [
   "/dashboard",
@@ -61,16 +67,22 @@ export function getSiteUrl() {
     (typeof import.meta !== "undefined" && import.meta.env?.VITE_SITE_URL) ||
     (typeof process !== "undefined" && process.env?.SITE_URL) ||
     (typeof process !== "undefined" && process.env?.APP_URL) ||
+    (typeof process !== "undefined" && process.env?.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : "") ||
     "";
 
   const normalized = String(fromEnv).trim().replace(/\/$/, "");
-  if (normalized) return normalized;
+  if (normalized) {
+    return normalized.startsWith("http") ? normalized : `https://${normalized}`;
+  }
 
   if (typeof window !== "undefined") {
     return window.location.origin.replace(/\/$/, "");
   }
 
-  return "http://localhost:8080";
+  // Production canonical for Google when env is missing.
+  return "https://liken.to";
 }
 
 export function buildCanonicalUrl(path: string) {
@@ -79,15 +91,21 @@ export function buildCanonicalUrl(path: string) {
   return `${siteUrl}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+export function getOgImageUrl() {
+  return `${getSiteUrl()}${OG_IMAGE_URL_PATH}`;
+}
+
 export function buildOrganizationJsonLd() {
   const siteUrl = getSiteUrl();
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
-    name: SITE_NAME,
+    name: SITE_FULL_NAME,
+    alternateName: ["liken", "liken AI", "Liken AI"],
     url: siteUrl,
-    logo: `${siteUrl}${SITE_ICON_PATH}`,
+    logo: `${siteUrl}/fevicon.png`,
     description: DEFAULT_DESCRIPTION,
+    sameAs: [],
   };
 }
 
@@ -96,12 +114,14 @@ export function buildWebSiteJsonLd() {
   return {
     "@context": "https://schema.org",
     "@type": "WebSite",
-    name: SITE_NAME,
+    name: SITE_FULL_NAME,
+    alternateName: ["liken", "liken AI"],
     url: siteUrl,
     description: DEFAULT_DESCRIPTION,
     publisher: {
       "@type": "Organization",
-      name: SITE_NAME,
+      name: SITE_FULL_NAME,
+      logo: `${siteUrl}/fevicon.png`,
     },
   };
 }
@@ -111,7 +131,7 @@ export function buildSoftwareApplicationJsonLd() {
   return {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    name: SITE_NAME,
+    name: SITE_FULL_NAME,
     applicationCategory: "LifestyleApplication",
     operatingSystem: "Web",
     url: siteUrl,
@@ -143,6 +163,7 @@ export function buildPageHead(input: PageSeoInput) {
   const canonical = buildCanonicalUrl(input.path);
   const robots = input.robots ?? "index,follow";
   const ogType = input.ogType ?? "website";
+  const ogImage = getOgImageUrl();
 
   return {
     meta: [
@@ -155,13 +176,13 @@ export function buildPageHead(input: PageSeoInput) {
       { property: "og:type", content: ogType },
       { property: "og:url", content: canonical },
       { property: "og:site_name", content: SITE_FULL_NAME },
-      { property: "og:image", content: OG_IMAGE_URL },
+      { property: "og:image", content: ogImage },
       { property: "og:image:alt", content: SITE_FULL_NAME },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: TWITTER_HANDLE },
       { name: "twitter:title", content: input.title },
       { name: "twitter:description", content: input.description },
-      { name: "twitter:image", content: OG_IMAGE_URL },
+      { name: "twitter:image", content: ogImage },
       { name: "twitter:image:alt", content: SITE_FULL_NAME },
     ],
     links: [{ rel: "canonical", href: canonical }],
@@ -177,17 +198,20 @@ export function buildRobotsTxt() {
     ...PRIVATE_PATHS.map((path) => `Disallow: ${path}`),
     "",
     `Sitemap: ${siteUrl}/sitemap.xml`,
+    `Host: ${siteUrl}`,
   ].join("\n");
 }
 
 export function buildSitemapXml() {
   const siteUrl = getSiteUrl();
+  const lastmod = new Date().toISOString().slice(0, 10);
   const urls = PUBLIC_INDEXABLE_PATHS.map((path) => {
     const loc = path === "/" ? `${siteUrl}/` : `${siteUrl}${path}`;
-    const priority = path === "/" ? "1.0" : "0.8";
+    const priority = path === "/" ? "1.0" : path === "/pricing" ? "0.8" : "0.6";
     const changefreq = path === "/" ? "weekly" : "monthly";
     return `  <url>
     <loc>${loc}</loc>
+    <lastmod>${lastmod}</lastmod>
     <changefreq>${changefreq}</changefreq>
     <priority>${priority}</priority>
   </url>`;

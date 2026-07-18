@@ -5,6 +5,8 @@ import { SITE_ICON_PATH, SITE_NAME, SITE_TAGLINE } from "@/lib/seo/site";
 const footerLinks = [
   { label: "Studio", to: "/studio" as const },
   { label: "Pricing", to: "/pricing" as const },
+  { label: "Terms", to: "/terms" as const },
+  { label: "Privacy", to: "/privacy" as const },
   { label: "Features", href: "#features" },
   { label: "FAQ", href: "#faq" },
 ];

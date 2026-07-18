@@ -148,10 +148,10 @@ function HeroMockup() {
               <div className="text-[11px] text-[#a8a0a3] uppercase tracking-wider mb-2">Best colors</div>
               <div className="flex gap-2 flex-wrap">
                 {[
-                  { n: "Navy", c: "#1c2a44" },
-                  { n: "Olive", c: "#4b5320" },
-                  { n: "Maroon", c: "#5a1a2b" },
-                  { n: "Cream", c: "#f5ecd9" },
+                  { n: "Blush", c: "#E8B4BC" },
+                  { n: "Soft Rose", c: "#D4899A" },
+                  { n: "Mauve", c: "#C4A4B8" },
+                  { n: "Ivory", c: "#F5EDE4" },
                 ].map((c) => (
                   <div key={c.n} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.04] border border-white/10 text-[11px]">
                     <span className="h-2.5 w-2.5 rounded-full" style={{ background: c.c }} />
@@ -170,7 +170,7 @@ function HeroMockup() {
             </div>
 
             <div className="grid grid-cols-4 gap-2">
-              {["#1c2a44", "#4b5320", "#5a1a2b", "#f5ecd9"].map((c, i) => (
+              {["#E8B4BC", "#D4899A", "#C4A4B8", "#F5EDE4"].map((c, i) => (
                 <div key={i} className="aspect-square rounded-xl ring-1 ring-white/10" style={{ background: c }} />
               ))}
             </div>

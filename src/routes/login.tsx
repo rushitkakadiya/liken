@@ -70,7 +70,15 @@ export function AuthScreen({
           <GoogleSignInButton redirectTo={redirectTo} />
 
           <p className="text-[11px] text-[#8f878a] text-center mt-6 leading-relaxed">
-            By continuing you agree to our Terms and Privacy Policy.
+            By continuing, you agree to our{" "}
+            <Link to="/terms" className="text-[#ee296b] hover:underline">
+              Terms of Service
+            </Link>{" "}
+            and{" "}
+            <Link to="/privacy" className="text-[#ee296b] hover:underline">
+              Privacy Policy
+            </Link>
+            .
           </p>
         </div>
       </main>

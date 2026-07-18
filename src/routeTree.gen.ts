@@ -9,63 +9,30 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as StudioRouteImport } from './routes/studio'
-import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
-import { Route as SignupRouteImport } from './routes/signup'
-import { Route as SavedLooksRouteImport } from './routes/saved-looks'
-import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
-import { Route as ProfileRouteImport } from './routes/profile'
-import { Route as PricingRouteImport } from './routes/pricing'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
-import { Route as ApiTryOnRouteImport } from './routes/api/try-on'
-import { Route as ApiStripeWebhookRouteImport } from './routes/api/stripe-webhook'
-import { Route as ApiStripeVerifySessionRouteImport } from './routes/api/stripe-verify-session'
-import { Route as ApiStripeConfigRouteImport } from './routes/api/stripe-config'
-import { Route as ApiStripeCheckoutRouteImport } from './routes/api/stripe-checkout'
-import { Route as ApiProductRecommendationsRouteImport } from './routes/api/product-recommendations'
+import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as PricingRouteImport } from './routes/pricing'
+import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
+import { Route as SavedLooksRouteImport } from './routes/saved-looks'
+import { Route as SignupRouteImport } from './routes/signup'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as StudioRouteImport } from './routes/studio'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as ApiBootstrapSecretsRouteImport } from './routes/api/bootstrap-secrets'
+import { Route as ApiProductRecommendationsRouteImport } from './routes/api/product-recommendations'
+import { Route as ApiStripeCheckoutRouteImport } from './routes/api/stripe-checkout'
+import { Route as ApiStripeConfigRouteImport } from './routes/api/stripe-config'
+import { Route as ApiStripeVerifySessionRouteImport } from './routes/api/stripe-verify-session'
+import { Route as ApiStripeWebhookRouteImport } from './routes/api/stripe-webhook'
+import { Route as ApiTryOnRouteImport } from './routes/api/try-on'
+import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
 
-const StudioRoute = StudioRouteImport.update({
-  id: '/studio',
-  path: '/studio',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
-  id: '/sitemap.xml',
-  path: '/sitemap.xml',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SignupRoute = SignupRouteImport.update({
-  id: '/signup',
-  path: '/signup',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SavedLooksRoute = SavedLooksRouteImport.update({
-  id: '/saved-looks',
-  path: '/saved-looks',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
-  id: '/robots.txt',
-  path: '/robots.txt',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProfileRoute = ProfileRouteImport.update({
-  id: '/profile',
-  path: '/profile',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PricingRoute = PricingRouteImport.update({
-  id: '/pricing',
-  path: '/pricing',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
@@ -73,39 +40,59 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthCallbackRoute = AuthCallbackRouteImport.update({
-  id: '/auth/callback',
-  path: '/auth/callback',
+const PricingRoute = PricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiTryOnRoute = ApiTryOnRouteImport.update({
-  id: '/api/try-on',
-  path: '/api/try-on',
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiStripeWebhookRoute = ApiStripeWebhookRouteImport.update({
-  id: '/api/stripe-webhook',
-  path: '/api/stripe-webhook',
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiStripeVerifySessionRoute = ApiStripeVerifySessionRouteImport.update({
-  id: '/api/stripe-verify-session',
-  path: '/api/stripe-verify-session',
+const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
+  id: '/robots.txt',
+  path: '/robots.txt',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiStripeConfigRoute = ApiStripeConfigRouteImport.update({
-  id: '/api/stripe-config',
-  path: '/api/stripe-config',
+const SavedLooksRoute = SavedLooksRouteImport.update({
+  id: '/saved-looks',
+  path: '/saved-looks',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiStripeCheckoutRoute = ApiStripeCheckoutRouteImport.update({
-  id: '/api/stripe-checkout',
-  path: '/api/stripe-checkout',
+const SignupRoute = SignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StudioRoute = StudioRouteImport.update({
+  id: '/studio',
+  path: '/studio',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiBootstrapSecretsRoute = ApiBootstrapSecretsRouteImport.update({
+  id: '/api/bootstrap-secrets',
+  path: '/api/bootstrap-secrets',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiProductRecommendationsRoute =
@@ -114,9 +101,34 @@ const ApiProductRecommendationsRoute =
     path: '/api/product-recommendations',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiBootstrapSecretsRoute = ApiBootstrapSecretsRouteImport.update({
-  id: '/api/bootstrap-secrets',
-  path: '/api/bootstrap-secrets',
+const ApiStripeCheckoutRoute = ApiStripeCheckoutRouteImport.update({
+  id: '/api/stripe-checkout',
+  path: '/api/stripe-checkout',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiStripeConfigRoute = ApiStripeConfigRouteImport.update({
+  id: '/api/stripe-config',
+  path: '/api/stripe-config',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiStripeVerifySessionRoute = ApiStripeVerifySessionRouteImport.update({
+  id: '/api/stripe-verify-session',
+  path: '/api/stripe-verify-session',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiStripeWebhookRoute = ApiStripeWebhookRouteImport.update({
+  id: '/api/stripe-webhook',
+  path: '/api/stripe-webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTryOnRoute = ApiTryOnRouteImport.update({
+  id: '/api/try-on',
+  path: '/api/try-on',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthCallbackRoute = AuthCallbackRouteImport.update({
+  id: '/auth/callback',
+  path: '/auth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -125,12 +137,14 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
+  '/privacy': typeof PrivacyRoute
   '/profile': typeof ProfileRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/saved-looks': typeof SavedLooksRoute
   '/signup': typeof SignupRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/studio': typeof StudioRoute
+  '/terms': typeof TermsRoute
   '/api/bootstrap-secrets': typeof ApiBootstrapSecretsRoute
   '/api/product-recommendations': typeof ApiProductRecommendationsRoute
   '/api/stripe-checkout': typeof ApiStripeCheckoutRoute
@@ -145,12 +159,14 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
+  '/privacy': typeof PrivacyRoute
   '/profile': typeof ProfileRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/saved-looks': typeof SavedLooksRoute
   '/signup': typeof SignupRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/studio': typeof StudioRoute
+  '/terms': typeof TermsRoute
   '/api/bootstrap-secrets': typeof ApiBootstrapSecretsRoute
   '/api/product-recommendations': typeof ApiProductRecommendationsRoute
   '/api/stripe-checkout': typeof ApiStripeCheckoutRoute
@@ -166,12 +182,14 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
+  '/privacy': typeof PrivacyRoute
   '/profile': typeof ProfileRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/saved-looks': typeof SavedLooksRoute
   '/signup': typeof SignupRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/studio': typeof StudioRoute
+  '/terms': typeof TermsRoute
   '/api/bootstrap-secrets': typeof ApiBootstrapSecretsRoute
   '/api/product-recommendations': typeof ApiProductRecommendationsRoute
   '/api/stripe-checkout': typeof ApiStripeCheckoutRoute
@@ -188,12 +206,14 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/login'
     | '/pricing'
+    | '/privacy'
     | '/profile'
     | '/robots.txt'
     | '/saved-looks'
     | '/signup'
     | '/sitemap.xml'
     | '/studio'
+    | '/terms'
     | '/api/bootstrap-secrets'
     | '/api/product-recommendations'
     | '/api/stripe-checkout'
@@ -208,12 +228,14 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/login'
     | '/pricing'
+    | '/privacy'
     | '/profile'
     | '/robots.txt'
     | '/saved-looks'
     | '/signup'
     | '/sitemap.xml'
     | '/studio'
+    | '/terms'
     | '/api/bootstrap-secrets'
     | '/api/product-recommendations'
     | '/api/stripe-checkout'
@@ -228,12 +250,14 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/login'
     | '/pricing'
+    | '/privacy'
     | '/profile'
     | '/robots.txt'
     | '/saved-looks'
     | '/signup'
     | '/sitemap.xml'
     | '/studio'
+    | '/terms'
     | '/api/bootstrap-secrets'
     | '/api/product-recommendations'
     | '/api/stripe-checkout'
@@ -249,12 +273,14 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   LoginRoute: typeof LoginRoute
   PricingRoute: typeof PricingRoute
+  PrivacyRoute: typeof PrivacyRoute
   ProfileRoute: typeof ProfileRoute
   RobotsDottxtRoute: typeof RobotsDottxtRoute
   SavedLooksRoute: typeof SavedLooksRoute
   SignupRoute: typeof SignupRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   StudioRoute: typeof StudioRoute
+  TermsRoute: typeof TermsRoute
   ApiBootstrapSecretsRoute: typeof ApiBootstrapSecretsRoute
   ApiProductRecommendationsRoute: typeof ApiProductRecommendationsRoute
   ApiStripeCheckoutRoute: typeof ApiStripeCheckoutRoute
@@ -267,60 +293,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/studio': {
-      id: '/studio'
-      path: '/studio'
-      fullPath: '/studio'
-      preLoaderRoute: typeof StudioRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/sitemap.xml': {
-      id: '/sitemap.xml'
-      path: '/sitemap.xml'
-      fullPath: '/sitemap.xml'
-      preLoaderRoute: typeof SitemapDotxmlRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/signup': {
-      id: '/signup'
-      path: '/signup'
-      fullPath: '/signup'
-      preLoaderRoute: typeof SignupRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/saved-looks': {
-      id: '/saved-looks'
-      path: '/saved-looks'
-      fullPath: '/saved-looks'
-      preLoaderRoute: typeof SavedLooksRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/robots.txt': {
-      id: '/robots.txt'
-      path: '/robots.txt'
-      fullPath: '/robots.txt'
-      preLoaderRoute: typeof RobotsDottxtRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/profile': {
-      id: '/profile'
-      path: '/profile'
-      fullPath: '/profile'
-      preLoaderRoute: typeof ProfileRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/pricing': {
-      id: '/pricing'
-      path: '/pricing'
-      fullPath: '/pricing'
-      preLoaderRoute: typeof PricingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard': {
@@ -330,53 +307,81 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/auth/callback': {
-      id: '/auth/callback'
-      path: '/auth/callback'
-      fullPath: '/auth/callback'
-      preLoaderRoute: typeof AuthCallbackRouteImport
+    '/pricing': {
+      id: '/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof PricingRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/try-on': {
-      id: '/api/try-on'
-      path: '/api/try-on'
-      fullPath: '/api/try-on'
-      preLoaderRoute: typeof ApiTryOnRouteImport
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/stripe-webhook': {
-      id: '/api/stripe-webhook'
-      path: '/api/stripe-webhook'
-      fullPath: '/api/stripe-webhook'
-      preLoaderRoute: typeof ApiStripeWebhookRouteImport
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/stripe-verify-session': {
-      id: '/api/stripe-verify-session'
-      path: '/api/stripe-verify-session'
-      fullPath: '/api/stripe-verify-session'
-      preLoaderRoute: typeof ApiStripeVerifySessionRouteImport
+    '/robots.txt': {
+      id: '/robots.txt'
+      path: '/robots.txt'
+      fullPath: '/robots.txt'
+      preLoaderRoute: typeof RobotsDottxtRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/stripe-config': {
-      id: '/api/stripe-config'
-      path: '/api/stripe-config'
-      fullPath: '/api/stripe-config'
-      preLoaderRoute: typeof ApiStripeConfigRouteImport
+    '/saved-looks': {
+      id: '/saved-looks'
+      path: '/saved-looks'
+      fullPath: '/saved-looks'
+      preLoaderRoute: typeof SavedLooksRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/stripe-checkout': {
-      id: '/api/stripe-checkout'
-      path: '/api/stripe-checkout'
-      fullPath: '/api/stripe-checkout'
-      preLoaderRoute: typeof ApiStripeCheckoutRouteImport
+    '/signup': {
+      id: '/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/studio': {
+      id: '/studio'
+      path: '/studio'
+      fullPath: '/studio'
+      preLoaderRoute: typeof StudioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/bootstrap-secrets': {
+      id: '/api/bootstrap-secrets'
+      path: '/api/bootstrap-secrets'
+      fullPath: '/api/bootstrap-secrets'
+      preLoaderRoute: typeof ApiBootstrapSecretsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/product-recommendations': {
@@ -386,11 +391,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiProductRecommendationsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/bootstrap-secrets': {
-      id: '/api/bootstrap-secrets'
-      path: '/api/bootstrap-secrets'
-      fullPath: '/api/bootstrap-secrets'
-      preLoaderRoute: typeof ApiBootstrapSecretsRouteImport
+    '/api/stripe-checkout': {
+      id: '/api/stripe-checkout'
+      path: '/api/stripe-checkout'
+      fullPath: '/api/stripe-checkout'
+      preLoaderRoute: typeof ApiStripeCheckoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/stripe-config': {
+      id: '/api/stripe-config'
+      path: '/api/stripe-config'
+      fullPath: '/api/stripe-config'
+      preLoaderRoute: typeof ApiStripeConfigRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/stripe-verify-session': {
+      id: '/api/stripe-verify-session'
+      path: '/api/stripe-verify-session'
+      fullPath: '/api/stripe-verify-session'
+      preLoaderRoute: typeof ApiStripeVerifySessionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/stripe-webhook': {
+      id: '/api/stripe-webhook'
+      path: '/api/stripe-webhook'
+      fullPath: '/api/stripe-webhook'
+      preLoaderRoute: typeof ApiStripeWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/try-on': {
+      id: '/api/try-on'
+      path: '/api/try-on'
+      fullPath: '/api/try-on'
+      preLoaderRoute: typeof ApiTryOnRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/callback': {
+      id: '/auth/callback'
+      path: '/auth/callback'
+      fullPath: '/auth/callback'
+      preLoaderRoute: typeof AuthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -401,12 +441,14 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   LoginRoute: LoginRoute,
   PricingRoute: PricingRoute,
+  PrivacyRoute: PrivacyRoute,
   ProfileRoute: ProfileRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
   SavedLooksRoute: SavedLooksRoute,
   SignupRoute: SignupRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   StudioRoute: StudioRoute,
+  TermsRoute: TermsRoute,
   ApiBootstrapSecretsRoute: ApiBootstrapSecretsRoute,
   ApiProductRecommendationsRoute: ApiProductRecommendationsRoute,
   ApiStripeCheckoutRoute: ApiStripeCheckoutRoute,
@@ -419,13 +461,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
