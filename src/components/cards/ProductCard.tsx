@@ -9,7 +9,7 @@ export function ProductCard({
   onTryOn: () => void;
 }) {
   return (
-    <div className="glass-card overflow-hidden flex flex-col h-full">
+    <div className="glass-card overflow-hidden flex flex-col h-full min-w-0">
       {/* Product fills the entire frame — no leftover background. */}
       <div className="relative aspect-[3/4] overflow-hidden bg-[#181516]">
         {product.image ? (
@@ -35,14 +35,20 @@ export function ProductCard({
         />
       </div>
 
-      <div className="p-3 sm:p-4 flex flex-col flex-1 min-h-[132px] sm:min-h-[152px]">
+      <div className="p-3 sm:p-4 flex flex-col flex-1 min-h-[132px] sm:min-h-[152px] min-w-0">
         <div className="text-[11px] sm:text-xs text-[#a8a0a3] truncate min-h-[1rem]">
           {product.store}
         </div>
-        <div className="text-xs sm:text-sm font-medium mt-1 line-clamp-2 min-h-[2.25rem] sm:min-h-[2.5rem] leading-snug">
-          {product.title}
+        {/* Hard-clip title so long names never bleed into the price row on narrow mobile cards. */}
+        <div className="mt-1 min-h-[2.25rem] sm:min-h-[2.5rem] overflow-hidden">
+          <p
+            className="text-xs sm:text-sm font-medium leading-snug line-clamp-2 break-words [overflow-wrap:anywhere]"
+            title={product.title}
+          >
+            {product.title}
+          </p>
         </div>
-        <div className="text-xs sm:text-sm text-[#ee296b] mt-1.5 sm:mt-2 font-semibold tabular-nums min-h-[1.1rem] sm:min-h-[1.25rem]">
+        <div className="relative z-[1] shrink-0 text-xs sm:text-sm text-[#ee296b] mt-1.5 sm:mt-2 font-semibold tabular-nums min-h-[1.1rem] sm:min-h-[1.25rem] bg-[#181516]">
           {product.price || "Price unavailable"}
         </div>
 

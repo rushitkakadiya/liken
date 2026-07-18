@@ -70,7 +70,7 @@ function ProductGroupSection({
               />
               <span className="text-sm font-medium text-white">{colorName}</span>
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5 items-stretch">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5 items-stretch [&>*]:min-w-0">
               {group.map((product) => (
                 <ProductCard key={product.id} product={product} onTryOn={() => onTryOn(product)} />
               ))}
